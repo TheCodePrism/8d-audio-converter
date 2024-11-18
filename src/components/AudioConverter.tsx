@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Music } from "lucide-react";
 import AudioPlayer from "./AudioPlayer";
 import UploadForm from "./UploadForm";
 
