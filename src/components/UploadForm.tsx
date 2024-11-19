@@ -1,56 +1,62 @@
-'use client'
+'use client';
 
-import { useState, useRef } from 'react'
-import { Upload, Loader2 } from 'lucide-react'
+import { useState, useRef } from 'react';
+import { Upload, Loader2, File } from 'lucide-react';
 
 interface UploadFormProps {
-  onUpload: (file: File) => void
-  isConverting: boolean
+  onUpload: (files: File[]) => void;
+  isConverting: boolean;
+  maxFileSize: number;
+  supportedFormats: string[];
 }
 
-export default function UploadForm({ onUpload, isConverting }: UploadFormProps) {
-  const [dragActive, setDragActive] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
+export default function UploadForm({ 
+  onUpload, 
+  isConverting, 
+  maxFileSize,
+  supportedFormats 
+}: UploadFormProps) {
+  const [dragActive, setDragActive] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
+    e.preventDefault();
+    e.stopPropagation();
     if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true)
+      setDragActive(true);
     } else if (e.type === "dragleave") {
-      setDragActive(false)
+      setDragActive(false);
     }
-  }
+  };
 
   const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragActive(false)
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
 
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFile(e.dataTransfer.files[0])
+    const files = Array.from(e.dataTransfer.files).filter(file => 
+      file.type.startsWith('audio/')
+    );
+    
+    if (files.length > 0) {
+      onUpload(files);
+    } else {
+      alert('Please upload audio files only');
     }
-  }
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    e.preventDefault()
-    if (e.target.files && e.target.files[0]) {
-      handleFile(e.target.files[0])
+    e.preventDefault();
+    if (e.target.files && e.target.files.length > 0) {
+      const files = Array.from(e.target.files);
+      onUpload(files);
     }
-  }
-
-  const handleFile = (file: File) => {
-    if (file.type.startsWith('audio/')) {
-      onUpload(file)
-    } else {
-      alert('Please upload an audio file')
-    }
-  }
+  };
 
   return (
     <div
-      className={`border-2 border-dashed rounded-lg p-8 text-center ${
-        dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300'
+      className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors duration-200 ${
+        dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
       }`}
       onDragEnter={handleDrag}
       onDragLeave={handleDrag}
@@ -64,37 +70,50 @@ export default function UploadForm({ onUpload, isConverting }: UploadFormProps) 
         accept="audio/*"
         onChange={handleChange}
         disabled={isConverting}
+        multiple
       />
 
       <div className="space-y-4">
         <div className="flex justify-center">
           {isConverting ? (
-            <Loader2 className="h-10 w-10 text-blue-500 animate-spin" />
+            <Loader2 className="h-12 w-12 text-blue-500 animate-spin" />
           ) : (
-            <Upload className="h-10 w-10 text-gray-400" />
+            <div className="p-3 bg-blue-50 rounded-full">
+              <Upload className="h-10 w-10 text-blue-500" />
+            </div>
           )}
         </div>
         
         <div className="space-y-2">
-          <p className="text-gray-600">
+          <h3 className="text-lg font-medium text-gray-800">
             {isConverting
               ? 'Converting your audio to 8D...'
-              : 'Drag and drop your audio file here, or click to select'}
+              : 'Upload Your Audio Files'}
+          </h3>
+          <p className="text-gray-600">
+            Drag and drop your audio files here, or click to select
           </p>
-          <p className="text-sm text-gray-500">
-            Supports MP3, WAV, and other audio formats
-          </p>
+          <div className="text-sm text-gray-500 space-y-1">
+            <p>Supported formats: {supportedFormats.map(format => 
+              format.split('/')[1].toUpperCase()
+            ).join(', ')}</p>
+            <p>Maximum file size: {maxFileSize / 1024 / 1024}MB</p>
+            <p>You can upload multiple files at once</p>
+          </div>
         </div>
 
         {!isConverting && (
-          <button
-            onClick={() => inputRef.current?.click()}
-            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-          >
-            Select File
-          </button>
+          <div className="space-y-3">
+            <button
+              onClick={() => inputRef.current?.click()}
+              className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors inline-flex items-center gap-2"
+            >
+              <File className="h-5 w-5" />
+              Select Files
+            </button>
+          </div>
         )}
       </div>
     </div>
-  )
+  );
 }
