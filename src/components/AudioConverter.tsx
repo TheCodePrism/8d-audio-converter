@@ -152,34 +152,99 @@ export default function AudioConverter() {
     audioBuffer: AudioBuffer
   ): Promise<AudioBuffer> => {
     const offlineContext = new OfflineAudioContext(
-      audioBuffer.numberOfChannels,
+      2, // Force stereo output
       audioBuffer.length,
       audioBuffer.sampleRate
     );
-
+  
+    // Create source and split into stereo channels
     const source = offlineContext.createBufferSource();
     source.buffer = audioBuffer;
-
-    const panner = offlineContext.createPanner();
-    panner.panningModel = "HRTF";
-    panner.distanceModel = "inverse";
-    panner.refDistance = 1;
-    panner.maxDistance = 10;
-    panner.rolloffFactor = 0.8;
-
-    source.connect(panner);
-    panner.connect(offlineContext.destination);
-
-    // Animate the panning movement
-    const radius = 2;
-    const speed = 1;
-    for (let t = 0; t < audioBuffer.duration; t += 0.05) {
-      const x = radius * Math.cos(speed * t);
-      const z = radius * Math.sin(speed * t);
-      panner.positionX.setValueAtTime(x, t);
-      panner.positionZ.setValueAtTime(z, t);
+  
+    // Bass Boost Filter
+    const bassBooster = offlineContext.createBiquadFilter();
+    bassBooster.type = 'lowshelf';
+    bassBooster.frequency.value = 100; // Target low frequencies
+    bassBooster.gain.value = 4; // Moderate bass boost
+  
+    // Create stereo panners for 3D audio movement
+    const leftPanner = offlineContext.createStereoPanner();
+    const rightPanner = offlineContext.createStereoPanner();
+  
+    // Convolver for spatial realism
+    const convolver = offlineContext.createConvolver();
+    
+    // Generate impulse response for spatial effect
+    const impulseResponseLength = audioContext.sampleRate;
+    const impulseBuffer = offlineContext.createBuffer(
+      2, 
+      impulseResponseLength, 
+      audioContext.sampleRate
+    );
+    
+    // Create a complex spatial impulse response
+    for (let channel = 0; channel < 2; channel++) {
+      const channelData = impulseBuffer.getChannelData(channel);
+      for (let i = 0; i < impulseResponseLength; i++) {
+        // Exponential decay with random modulation
+        const decay = Math.exp(-i / (impulseResponseLength / 10));
+        const modulation = Math.sin(i * 0.1) * 0.2;
+        channelData[i] = (Math.random() * 2 - 1) * decay * (1 + modulation);
+      }
     }
-
+    
+    convolver.buffer = impulseBuffer;
+  
+    // More dynamic panning algorithm
+    const panningSequence = (t: number) => {
+      // Complex sinusoidal panning with varying movement
+      const leftPan = Math.sin(t * 2) * 0.9; // Wider left movement
+      const rightPan = Math.cos(t * 2.2) * 0.9; // Slightly offset right movement
+      return { left: leftPan, right: rightPan };
+    };
+  
+    // Create dynamics compressor for balanced sound
+    const dynamicsCompressor = offlineContext.createDynamicsCompressor();
+    dynamicsCompressor.threshold.value = -24;
+    dynamicsCompressor.knee.value = 40;
+    dynamicsCompressor.ratio.value = 12;
+    dynamicsCompressor.attack.value = 0;
+    dynamicsCompressor.release.value = 0.25;
+  
+    // Split source into two channels for precise control
+    const splitter = offlineContext.createChannelSplitter(2);
+    const merger = offlineContext.createChannelMerger(2);
+  
+    // Connection chain
+    source.connect(splitter);
+    
+    // Left channel processing
+    splitter.connect(bassBooster, 0);
+    bassBooster.connect(leftPanner);
+    leftPanner.connect(merger, 0, 0);
+    
+    // Right channel processing
+    splitter.connect(rightPanner, 1);
+    rightPanner.connect(merger, 0, 1);
+  
+    // Add convolver for spatial depth
+    merger.connect(convolver);
+    convolver.connect(dynamicsCompressor);
+    dynamicsCompressor.connect(offlineContext.destination);
+  
+    // Animate panning and bass throughout the audio duration
+    for (let t = 0; t < audioBuffer.duration; t += 0.05) {
+      const { left, right } = panningSequence(t);
+      
+      // Dynamic panning
+      leftPanner.pan.setValueAtTime(left, t);
+      rightPanner.pan.setValueAtTime(right, t);
+      
+      // Optional: Dynamic bass boost (can be commented out if too intense)
+      const bassMod = Math.abs(Math.sin(t * 1.5)) * 2;
+      bassBooster.gain.setValueAtTime(4 + bassMod, t);
+    }
+  
     source.start();
     return await offlineContext.startRendering();
   };
