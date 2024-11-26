@@ -17,7 +17,7 @@ export default function Home() {
       
       <main className="flex-grow p-4 md:p-8">
         <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl md:text-4xl font-bold text-center mb-8">
+        <h1 className="text-3xl md:text-4xl font-bold text-center mb-8 bg-clip-text text-transparent bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 p-2">
             8D Audio Converter
           </h1>
           <p className="text-gray-600 text-center mb-8">
