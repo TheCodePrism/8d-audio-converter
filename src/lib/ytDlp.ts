@@ -18,3 +18,4 @@ export function getYtDlpPath(): string {
   // Fallback to system PATH
   return "yt-dlp";
 }
+
