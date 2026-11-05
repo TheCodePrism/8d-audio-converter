@@ -1,13 +1,23 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Download, AlertCircle, X, Sparkles, RefreshCw } from "lucide-react";
+import {
+  Download,
+  AlertCircle,
+  X,
+  Sparkles,
+  RefreshCw,
+  Upload,
+  Youtube,
+  Music,
+} from "lucide-react";
 import AudioPlayer from "./AudioPlayer";
 import UploadForm from "./UploadForm";
 import AudioSettings from "./AudioSettings";
 import OrbitVisualizer from "./OrbitVisualizer";
+import YouTubeInput from "./YouTubeInput";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AudioProcessingOptions } from "@/types";
+import { AudioProcessingOptions, YouTubeTrack } from "@/types";
 import {
   DEFAULT_OPTIONS,
   process8DAudio,
@@ -25,20 +35,33 @@ const SUPPORTED_FORMATS = [
 ];
 
 interface ConversionProgress {
-  status: "idle" | "reading" | "decoding" | "processing" | "encoding" | "complete";
+  status:
+    | "idle"
+    | "downloading"
+    | "reading"
+    | "decoding"
+    | "processing"
+    | "encoding"
+    | "complete";
   percent: number;
 }
 
-interface AudioFile {
-  file: File;
+interface AudioFileItem {
+  id: string;
+  name: string;
+  size?: number;
+  file?: File;
   originalUrl: string;
   convertedUrl?: string;
   status: "pending" | "converting" | "complete" | "error";
   error?: string;
+  sourceType: "upload" | "youtube";
+  rawBuffer?: AudioBuffer;
 }
 
 export default function AudioConverter() {
-  const [audioFiles, setAudioFiles] = useState<AudioFile[]>([]);
+  const [activeTab, setActiveTab] = useState<"upload" | "youtube">("upload");
+  const [audioFiles, setAudioFiles] = useState<AudioFileItem[]>([]);
   const [options, setOptions] = useState<AudioProcessingOptions>(DEFAULT_OPTIONS);
   const [progress, setProgress] = useState<ConversionProgress>({
     status: "idle",
@@ -83,24 +106,29 @@ export default function AudioConverter() {
     return null;
   };
 
+  // --- Local File Upload Handler ---
   const handleFileUpload = async (files: File[]) => {
     setError(null);
-    const newFiles: AudioFile[] = files.map((file) => ({
+    const newItems: AudioFileItem[] = files.map((file) => ({
+      id: `${file.name}-${Date.now()}-${Math.random()}`,
+      name: file.name,
+      size: file.size,
       file,
       originalUrl: registerUrl(URL.createObjectURL(file)),
       status: "pending",
+      sourceType: "upload",
     }));
 
-    setAudioFiles((prev) => [...prev, ...newFiles]);
+    setAudioFiles((prev) => [...prev, ...newItems]);
 
-    for (let i = 0; i < newFiles.length; i++) {
-      const current = newFiles[i];
-      const validationError = validateFile(current.file);
+    for (let i = 0; i < newItems.length; i++) {
+      const item = newItems[i];
+      const validationError = validateFile(item.file!);
 
       if (validationError) {
         setAudioFiles((prev) =>
           prev.map((f) =>
-            f.file === current.file
+            f.id === item.id
               ? { ...f, status: "error", error: validationError }
               : f
           )
@@ -108,20 +136,22 @@ export default function AudioConverter() {
         continue;
       }
 
-      await runConversion(current.file, i);
+      await runLocalFileConversion(item);
     }
   };
 
-  const runConversion = async (file: File, index: number) => {
+  const runLocalFileConversion = async (item: AudioFileItem) => {
     setAudioFiles((prev) =>
-      prev.map((f, i) => (i === index ? { ...f, status: "converting", error: undefined } : f))
+      prev.map((f) =>
+        f.id === item.id ? { ...f, status: "converting", error: undefined } : f
+      )
     );
 
     let audioContext: AudioContext | null = null;
 
     try {
       setProgress({ status: "reading", percent: 15 });
-      const arrayBuffer = await file.arrayBuffer();
+      const arrayBuffer = await item.file!.arrayBuffer();
 
       setProgress({ status: "decoding", percent: 35 });
       const AudioCtx =
@@ -137,8 +167,15 @@ export default function AudioConverter() {
       const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
 
       setAudioFiles((prev) =>
-        prev.map((f, i) =>
-          i === index ? { ...f, convertedUrl, status: "complete" } : f
+        prev.map((f) =>
+          f.id === item.id
+            ? {
+                ...f,
+                convertedUrl,
+                status: "complete",
+                rawBuffer: decodedBuffer,
+              }
+            : f
         )
       );
       setProgress({ status: "complete", percent: 100 });
@@ -148,8 +185,8 @@ export default function AudioConverter() {
         err?.message ||
         "Could not convert audio. Please ensure the file is a valid audio track.";
       setAudioFiles((prev) =>
-        prev.map((f, i) =>
-          i === index ? { ...f, status: "error", error: msg } : f
+        prev.map((f) =>
+          f.id === item.id ? { ...f, status: "error", error: msg } : f
         )
       );
       setError(msg);
@@ -162,15 +199,131 @@ export default function AudioConverter() {
     }
   };
 
+  // --- YouTube Track Conversion Handler ---
+  const handleConvertYouTubeTrack = async (track: YouTubeTrack) => {
+    setError(null);
+    const item: AudioFileItem = {
+      id: `yt-${track.id}-${Date.now()}`,
+      name: `${track.title}.wav`,
+      originalUrl: "",
+      status: "converting",
+      sourceType: "youtube",
+    };
+
+    setAudioFiles((prev) => [...prev, item]);
+
+    let audioContext: AudioContext | null = null;
+
+    try {
+      setProgress({ status: "downloading", percent: 15 });
+      // Fetch audio stream from backend yt-dlp API route
+      const streamRes = await fetch(
+        `/api/youtube/stream?url=${encodeURIComponent(track.url)}`
+      );
+
+      if (!streamRes.ok) {
+        const errJson = await streamRes.json().catch(() => null);
+        throw new Error(errJson?.error || "Failed to download YouTube audio stream.");
+      }
+
+      setProgress({ status: "reading", percent: 35 });
+      const audioBlob = await streamRes.blob();
+      const originalUrl = registerUrl(URL.createObjectURL(audioBlob));
+      const arrayBuffer = await audioBlob.arrayBuffer();
+
+      setProgress({ status: "decoding", percent: 55 });
+      const AudioCtx =
+        window.AudioContext || (window as any).webkitAudioContext;
+      audioContext = new AudioCtx();
+      const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+      setProgress({ status: "processing", percent: 75 });
+      const processedBuffer = await process8DAudio(decodedBuffer, options);
+
+      setProgress({ status: "encoding", percent: 90 });
+      const wavBlob = float32ToWav(processedBuffer);
+      const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
+
+      setAudioFiles((prev) =>
+        prev.map((f) =>
+          f.id === item.id
+            ? {
+                ...f,
+                originalUrl,
+                convertedUrl,
+                status: "complete",
+                size: wavBlob.size,
+                rawBuffer: decodedBuffer,
+              }
+            : f
+        )
+      );
+      setProgress({ status: "complete", percent: 100 });
+    } catch (err: any) {
+      console.error("YouTube conversion error:", err);
+      const msg = err?.message || "YouTube conversion failed.";
+      setAudioFiles((prev) =>
+        prev.map((f) =>
+          f.id === item.id ? { ...f, status: "error", error: msg } : f
+        )
+      );
+      setError(msg);
+    } finally {
+      if (audioContext && audioContext.state !== "closed") {
+        try {
+          await audioContext.close();
+        } catch {}
+      }
+    }
+  };
+
+  const handleConvertYouTubeBatch = async (tracks: YouTubeTrack[]) => {
+    for (const track of tracks) {
+      await handleConvertYouTubeTrack(track);
+    }
+  };
+
+  // --- Re-apply Settings with Cached Decoded Buffer ---
   const handleReconvert = async (index: number) => {
     const target = audioFiles[index];
     if (!target) return;
+
     if (target.convertedUrl) {
       try {
         URL.revokeObjectURL(target.convertedUrl);
       } catch {}
     }
-    await runConversion(target.file, index);
+
+    // If we have cached rawBuffer, we can re-render instantly without re-downloading!
+    if (target.rawBuffer) {
+      setAudioFiles((prev) =>
+        prev.map((f, i) => (i === index ? { ...f, status: "converting" } : f))
+      );
+
+      try {
+        setProgress({ status: "processing", percent: 50 });
+        const processedBuffer = await process8DAudio(target.rawBuffer, options);
+
+        setProgress({ status: "encoding", percent: 90 });
+        const wavBlob = float32ToWav(processedBuffer);
+        const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
+
+        setAudioFiles((prev) =>
+          prev.map((f, i) =>
+            i === index ? { ...f, convertedUrl, status: "complete" } : f
+          )
+        );
+        setProgress({ status: "complete", percent: 100 });
+      } catch (err: any) {
+        setAudioFiles((prev) =>
+          prev.map((f, i) =>
+            i === index ? { ...f, status: "error", error: err.message } : f
+          )
+        );
+      }
+    } else if (target.file) {
+      await runLocalFileConversion(target);
+    }
   };
 
   const handleDownload = (convertedUrl: string, originalFileName: string) => {
@@ -205,7 +358,7 @@ export default function AudioConverter() {
   const isConvertingAny = audioFiles.some((f) => f.status === "converting");
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-6 sm:p-8 max-w-4xl mx-auto">
+    <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-6 sm:p-8 max-w-4xl mx-auto space-y-6">
       {/* Settings & Presets Drawer */}
       <AudioSettings
         options={options}
@@ -214,31 +367,82 @@ export default function AudioConverter() {
       />
 
       {error && (
-        <Alert variant="destructive" className="mb-6">
+        <Alert variant="destructive">
           <AlertCircle className="h-5 w-5" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
-      {/* Upload Dropzone */}
-      {audioFiles.length === 0 && (
+      {/* Input Source Tabs */}
+      <div className="border-b border-slate-200">
+        <div className="flex gap-4">
+          <button
+            type="button"
+            onClick={() => setActiveTab("upload")}
+            className={`pb-3 px-2 text-sm font-semibold flex items-center gap-2 border-b-2 transition-all ${
+              activeTab === "upload"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <Upload className="w-4 h-4" />
+            <span>Local File Upload</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("youtube")}
+            className={`pb-3 px-2 text-sm font-semibold flex items-center gap-2 border-b-2 transition-all ${
+              activeTab === "youtube"
+                ? "border-red-600 text-red-600"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <Youtube className="w-4 h-4" />
+            <span>YouTube URL / Playlist (yt-dlp)</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Active Tab View */}
+      {activeTab === "upload" ? (
         <UploadForm
           onUpload={handleFileUpload}
           isConverting={isConvertingAny}
           maxFileSize={MAX_FILE_SIZE}
           supportedFormats={SUPPORTED_FORMATS}
         />
+      ) : (
+        <YouTubeInput
+          onConvertTrack={handleConvertYouTubeTrack}
+          onConvertBatch={handleConvertYouTubeBatch}
+          isConverting={isConvertingAny}
+        />
       )}
 
-      {/* File Processing & Results List */}
+      {/* Converted Files List & Visualizers */}
       {audioFiles.length > 0 && (
-        <div className="space-y-8">
-          {audioFiles.map((audioFile, index) => {
+        <div className="space-y-8 pt-4 border-t border-slate-200">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
+              <Music className="w-4 h-4 text-blue-600" />
+              <span>Converted Tracks Queue ({audioFiles.length})</span>
+            </h3>
+            <button
+              type="button"
+              onClick={() => setAudioFiles([])}
+              className="text-xs text-slate-500 hover:text-red-600 transition-colors"
+            >
+              Clear All
+            </button>
+          </div>
+
+          {audioFiles.map((item, index) => {
             const isThisPlaying = playingFileIndex === index;
 
             return (
               <div
-                key={index}
+                key={item.id}
                 className="bg-slate-50 border border-slate-200 rounded-2xl p-5 sm:p-6 relative transition-all shadow-sm"
               >
                 {/* Remove File Button */}
@@ -246,37 +450,58 @@ export default function AudioConverter() {
                   type="button"
                   onClick={() => removeFile(index)}
                   className="absolute top-4 right-4 p-1.5 hover:bg-slate-200 rounded-full text-slate-400 hover:text-slate-700 transition-colors"
-                  title="Remove file"
-                  aria-label="Remove audio file"
+                  title="Remove track"
+                  aria-label="Remove track"
                 >
                   <X className="h-4 w-4" />
                 </button>
 
-                {/* File Title & Size */}
+                {/* Track Title, Source Tag & Size */}
                 <div className="mb-5 pr-8">
-                  <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-                    {audioFile.file.name}
-                    {audioFile.status === "complete" && (
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <h4 className="font-bold text-slate-800 text-lg line-clamp-1">
+                      {item.name}
+                    </h4>
+                    {item.sourceType === "youtube" ? (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-red-100 text-red-700 flex items-center gap-1">
+                        <Youtube className="w-3 h-3" />
+                        YouTube
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-100 text-blue-700 flex items-center gap-1">
+                        <Upload className="w-3 h-3" />
+                        File
+                      </span>
+                    )}
+                    {item.status === "complete" && (
                       <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-1">
                         <Sparkles className="w-3 h-3" />
                         8D Ready
                       </span>
                     )}
-                  </h3>
-                  <p className="text-xs text-slate-500 font-mono mt-0.5">
-                    {(audioFile.file.size / (1024 * 1024)).toFixed(2)} MB
-                  </p>
+                  </div>
+                  {item.size && (
+                    <p className="text-xs text-slate-500 font-mono">
+                      {(item.size / (1024 * 1024)).toFixed(2)} MB
+                    </p>
+                  )}
                 </div>
 
                 {/* Progress Bar */}
-                {audioFile.status === "converting" && (
+                {item.status === "converting" && (
                   <div className="mb-6 p-4 bg-white rounded-xl border border-blue-100 shadow-sm space-y-2">
                     <div className="flex justify-between text-xs font-medium text-slate-600">
                       <span className="capitalize">
-                        {progress.status === "reading" && "Reading audio data..."}
-                        {progress.status === "decoding" && "Decoding waveform..."}
-                        {progress.status === "processing" && "Applying 3D HRTF rotation & spatial reverb..."}
-                        {progress.status === "encoding" && "Encoding 16-bit PCM stereo WAV..."}
+                        {progress.status === "downloading" &&
+                          "Downloading audio stream from YouTube via yt-dlp..."}
+                        {progress.status === "reading" &&
+                          "Reading audio buffer..."}
+                        {progress.status === "decoding" &&
+                          "Decoding waveform into Web Audio API..."}
+                        {progress.status === "processing" &&
+                          "Applying 360° HRTF binaural rotation & spatial reverb..."}
+                        {progress.status === "encoding" &&
+                          "Encoding 16-bit PCM stereo WAV..."}
                         {progress.status === "complete" && "Completed!"}
                       </span>
                       <span className="font-mono text-blue-600 font-bold">
@@ -293,15 +518,15 @@ export default function AudioConverter() {
                 )}
 
                 {/* Error Banner */}
-                {audioFile.status === "error" && (
+                {item.status === "error" && (
                   <Alert variant="destructive" className="mb-4">
                     <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>{audioFile.error}</AlertDescription>
+                    <AlertDescription>{item.error}</AlertDescription>
                   </Alert>
                 )}
 
                 {/* Interactive 3D Visualizer & 8D Audio Player */}
-                {audioFile.status === "complete" && audioFile.convertedUrl && (
+                {item.status === "complete" && item.convertedUrl && (
                   <div className="space-y-6">
                     {/* 3D Orbit Radar */}
                     <div className="flex justify-center">
@@ -338,10 +563,7 @@ export default function AudioConverter() {
                           <button
                             type="button"
                             onClick={() =>
-                              handleDownload(
-                                audioFile.convertedUrl!,
-                                audioFile.file.name
-                              )
+                              handleDownload(item.convertedUrl!, item.name)
                             }
                             className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm hover:shadow transition-all"
                           >
@@ -352,7 +574,7 @@ export default function AudioConverter() {
                       </div>
 
                       <AudioPlayer
-                        src={audioFile.convertedUrl}
+                        src={item.convertedUrl}
                         title="Converted 8D Track"
                         onPlayStateChange={(playing) => {
                           if (playing) {
@@ -370,31 +592,22 @@ export default function AudioConverter() {
                     </div>
 
                     {/* Original Track Preview (A/B Comparison) */}
-                    <div className="pt-2 border-t border-slate-200/80">
-                      <span className="text-xs font-medium text-slate-500 mb-2 block">
-                        Original Flat Audio (A/B Comparison)
-                      </span>
-                      <AudioPlayer
-                        src={audioFile.originalUrl}
-                        title="Original Audio"
-                      />
-                    </div>
+                    {item.originalUrl && (
+                      <div className="pt-2 border-t border-slate-200/80">
+                        <span className="text-xs font-medium text-slate-500 mb-2 block">
+                          Original Flat Audio (A/B Comparison)
+                        </span>
+                        <AudioPlayer
+                          src={item.originalUrl}
+                          title="Original Audio"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             );
           })}
-
-          {/* Action Row */}
-          <div className="flex flex-col sm:flex-row gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => setAudioFiles([])}
-              className="flex-1 py-3 px-4 border border-slate-300 text-slate-700 font-medium rounded-xl hover:bg-slate-50 transition-colors text-sm"
-            >
-              Clear & Convert More Files
-            </button>
-          </div>
         </div>
       )}
     </div>

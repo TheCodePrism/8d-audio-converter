@@ -2,7 +2,7 @@ export interface AudioProcessingOptions {
   rotationSpeed: number; // Seconds per full 360-degree rotation (e.g. 8 to 24s)
   reverbLevel: number; // 0.0 to 0.5 (wet mix ratio)
   bassBoost: number; // dB boost at low frequencies (0 to 10 dB)
-  direction: 'clockwise' | 'counter-clockwise';
+  direction: "clockwise" | "counter-clockwise";
   spatialRadius: number; // Virtual distance from listener (1 to 4)
 }
 
@@ -24,4 +24,20 @@ export interface AudioPlayerState {
   duration: number;
   volume: number;
   isMuted: boolean;
+}
+
+export interface YouTubeTrack {
+  id: string;
+  title: string;
+  duration?: number;
+  url: string;
+  thumbnail?: string;
+  author?: string;
+}
+
+export interface YouTubeInfoResponse {
+  isPlaylist: boolean;
+  title: string;
+  thumbnail?: string;
+  tracks: YouTubeTrack[];
 }
