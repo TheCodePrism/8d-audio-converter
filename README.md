@@ -1,96 +1,73 @@
-# 8D Audio Converter
+# 8D Audio Converter 🎧
 
-Transform your audio into an immersive 8D experience with our web-based converter. This application creates a spatial audio effect that makes sound appear to rotate around your head, providing a unique and engaging listening experience.
+Transform standard stereo or mono audio tracks into an immersive 8D spatial audio experience with client-side 360° binaural rotation, bass boost, and room reverberation.
 
-![8D Audio Converter](public/preview.png)
+This web application operates **100% in the user's browser** via the Web Audio API (`OfflineAudioContext`) with zero server uploads—ensuring complete privacy and fast processing.
 
-## Features
+---
 
-- 🎧 Convert regular audio files to 8D audio
-- 🔄 Real-time audio processing
-- 🎵 Support for multiple audio formats (MP3, WAV, OGG)
-- 💫 Advanced spatial and bass enhancement effects
-- 📱 Responsive design for all devices
-- ⬇️ Easy download of converted files
+## ✨ Features
 
-## Getting Started
+- 🎧 **True 360° HRTF Binaural Spatialization**: Simulates realistic head-related acoustic filtering so sound travels continuously in front, behind, and around your head.
+- 🎛️ **Audio Presets & Custom Sliders**:
+  - **Presets**: Classic 8D, Slow Ambient, Fast & Dynamic, and Deep Bass Orbit.
+  - **Customizable Controls**: Orbit speed (seconds/rev), Low-end bass boost (dB), Spatial reverb room depth (%), and Orbit direction (Clockwise / Counter-Clockwise).
+- 📡 **Interactive 3D Orbit Radar Visualizer**: Real-time canvas radar showing the exact 360° position of the audio source orbiting the listener's head.
+- 🔄 **Live A/B Audio Comparison**: Compare the original flat audio track side-by-side with the converted 8D track before downloading.
+- 🔒 **100% Client-Side & Private**: No audio files are uploaded to remote servers. All DSP rendering is performed locally in browser memory.
+- ⬇️ **Lossless 16-bit PCM WAV Export**: Download full fidelity, uncompressed stereo WAV audio.
 
-First, install the dependencies:
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- Node.js 18+ (tested on Node v22)
+- npm, yarn, or pnpm
+
+### Installation
 
 ```bash
+git clone https://github.com/TheCodePrism/8d-audio-converter.git
+cd 8d-audio-converter
 npm install
-# or
-yarn install
-# or
-pnpm install
 ```
 
-Then, run the development server:
+### Run the Development Server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the application.
+Open [http://localhost:3000](http://localhost:3000) with your browser.
 
-## How It Works
+### Build for Production
 
-The 8D Audio Converter uses the Web Audio API to create an immersive audio experience by:
-1. Applying dynamic stereo panning
-2. Enhancing spatial audio effects
-3. Adding bass boost and compression
-4. Creating a rotating sound effect
+```bash
+npm run build
+npm run start
+```
 
-## Technical Stack
+---
 
-- [Next.js 14](https://nextjs.org/) - React Framework
-- [TypeScript](https://www.typescriptlang.org/) - Programming Language
-- [Tailwind CSS](https://tailwindcss.com/) - Styling
-- [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API) - Audio Processing
-- [Lucide React](https://lucide.dev/) - Icons
+## 🛠️ Technical Stack
 
-## Best Practices
+- **Framework**: [Next.js 15 (App Router)](https://nextjs.org/)
+- **Language**: [TypeScript](https://www.typescriptlang.org/)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+- **Audio DSP Engine**: [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API) (`OfflineAudioContext`, `PannerNode` with HRTF, `ConvolverNode`, `BiquadFilterNode`, `DynamicsCompressorNode`)
+- **Icons**: [Lucide React](https://lucide.dev/)
 
-- 🎧 Use headphones for the best experience
-- 🔊 Keep volume at a moderate level
-- ⏱️ Processing time depends on file size
-- 💾 Supported file size up to 50MB
+---
 
-## Development
+## 🎧 Best Practices for Listening
 
-You can start editing the application by modifying the files in the `app` directory. The application auto-updates as you edit the files.
+1. **Always wear headphones or earbuds** — 8D audio relies on independent stereo channels delivered directly to each ear. Playing through external speakers mixes the stereo channels acoustically in the room and diminishes the effect.
+2. Keep your volume at a comfortable, moderate level.
 
-Key files:
-- `app/page.tsx` - Main page component
-- `components/AudioConverter.tsx` - Core conversion logic
-- `components/AudioPlayer.tsx` - Custom audio player
-- `components/UploadForm.tsx` - File upload handling
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a custom font family from Vercel.
+## 📄 License
 
-## Deployment
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme).
-
-Check out the [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-## Learn More
-
-To learn more about the technologies used in this project:
-
-- [Next.js Documentation](https://nextjs.org/docs) - Next.js features and API
-- [Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API) - Audio processing capabilities
-- [Tailwind CSS](https://tailwindcss.com/docs) - Styling framework
-- [TypeScript](https://www.typescriptlang.org/docs/) - TypeScript documentation
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is open-source and available under the [MIT License](LICENSE).

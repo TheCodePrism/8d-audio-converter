@@ -1,17 +1,31 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Download, AlertCircle, X } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Download, AlertCircle, X, Sparkles, RefreshCw } from "lucide-react";
 import AudioPlayer from "./AudioPlayer";
 import UploadForm from "./UploadForm";
+import AudioSettings from "./AudioSettings";
+import OrbitVisualizer from "./OrbitVisualizer";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AudioProcessingOptions } from "@/types";
+import {
+  DEFAULT_OPTIONS,
+  process8DAudio,
+  float32ToWav,
+} from "@/lib/audioProcessing";
 
-// Constants
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
-const SUPPORTED_FORMATS = ["audio/mp3", "audio/wav", "audio/mpeg", "audio/ogg"];
+const SUPPORTED_FORMATS = [
+  "audio/mp3",
+  "audio/wav",
+  "audio/mpeg",
+  "audio/ogg",
+  "audio/m4a",
+  "audio/x-m4a",
+];
 
 interface ConversionProgress {
-  status: "preparing" | "processing" | "encoding" | "complete";
+  status: "idle" | "reading" | "decoding" | "processing" | "encoding" | "complete";
   percent: number;
 }
 
@@ -25,39 +39,68 @@ interface AudioFile {
 
 export default function AudioConverter() {
   const [audioFiles, setAudioFiles] = useState<AudioFile[]>([]);
+  const [options, setOptions] = useState<AudioProcessingOptions>(DEFAULT_OPTIONS);
   const [progress, setProgress] = useState<ConversionProgress>({
-    status: "preparing",
+    status: "idle",
     percent: 0,
   });
   const [error, setError] = useState<string | null>(null);
 
+  // Playback state tracking for orbit radar visualizer
+  const [playingFileIndex, setPlayingFileIndex] = useState<number | null>(null);
+  const [activePlaybackTime, setActivePlaybackTime] = useState<number>(0);
+
+  // Keep ref to all created object URLs to prevent memory leaks on unmount
+  const createdUrlsRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    const urls = createdUrlsRef.current;
+    return () => {
+      // Cleanup all object URLs when component unmounts
+      urls.forEach((url) => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {}
+      });
+    };
+  }, []);
+
+  const registerUrl = (url: string) => {
+    createdUrlsRef.current.push(url);
+    return url;
+  };
+
   const validateFile = (file: File): string | null => {
     if (file.size > MAX_FILE_SIZE) {
-      return `File size exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`;
+      return `File size exceeds the ${MAX_FILE_SIZE / 1024 / 1024}MB limit`;
     }
-    if (!SUPPORTED_FORMATS.includes(file.type)) {
-      return "Unsupported file format. Please use MP3, WAV, or OGG files";
+    const isSupported =
+      SUPPORTED_FORMATS.includes(file.type) ||
+      file.name.match(/\.(mp3|wav|ogg|m4a)$/i);
+    if (!isSupported) {
+      return "Unsupported file format. Please upload MP3, WAV, or OGG files.";
     }
     return null;
   };
 
   const handleFileUpload = async (files: File[]) => {
-    const newFiles = files.map((file) => ({
+    setError(null);
+    const newFiles: AudioFile[] = files.map((file) => ({
       file,
-      originalUrl: URL.createObjectURL(file),
-      status: "pending" as const,
+      originalUrl: registerUrl(URL.createObjectURL(file)),
+      status: "pending",
     }));
 
     setAudioFiles((prev) => [...prev, ...newFiles]);
 
     for (let i = 0; i < newFiles.length; i++) {
-      const currentFile = newFiles[i];
-      const validationError = validateFile(currentFile.file);
+      const current = newFiles[i];
+      const validationError = validateFile(current.file);
 
       if (validationError) {
         setAudioFiles((prev) =>
           prev.map((f) =>
-            f === currentFile
+            f.file === current.file
               ? { ...f, status: "error", error: validationError }
               : f
           )
@@ -65,63 +108,33 @@ export default function AudioConverter() {
         continue;
       }
 
-      try {
-        await processAudioFile(currentFile, i);
-      } catch (err) {
-        setAudioFiles((prev) =>
-          prev.map((f) =>
-            f === currentFile
-              ? {
-                  ...f,
-                  status: "error",
-                  error: "Conversion failed. Please try again.",
-                }
-              : f
-          )
-        );
-      }
+      await runConversion(current.file, i);
     }
   };
 
-  const processAudioFile = async (audioFile: AudioFile, index: number) => {
+  const runConversion = async (file: File, index: number) => {
     setAudioFiles((prev) =>
-      prev.map((f, i) => (i === index ? { ...f, status: "converting" } : f))
+      prev.map((f, i) => (i === index ? { ...f, status: "converting", error: undefined } : f))
     );
 
+    let audioContext: AudioContext | null = null;
+
     try {
-      setProgress({ status: "preparing", percent: 0 });
+      setProgress({ status: "reading", percent: 15 });
+      const arrayBuffer = await file.arrayBuffer();
 
-      // Check for AudioContext support
-      if (!window.AudioContext) {
-        window.AudioContext = (window as any).webkitAudioContext;
-      }
+      setProgress({ status: "decoding", percent: 35 });
+      const AudioCtx =
+        window.AudioContext || (window as any).webkitAudioContext;
+      audioContext = new AudioCtx();
+      const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
-      const audioContext = new window.AudioContext();
+      setProgress({ status: "processing", percent: 65 });
+      const processedBuffer = await process8DAudio(decodedBuffer, options);
 
-      // Safely load array buffer
-      let arrayBuffer: ArrayBuffer;
-      try {
-        arrayBuffer = await audioFile.file.arrayBuffer();
-      } catch (err) {
-        throw new Error("Failed to read audio file");
-      }
-      setProgress({ status: "processing", percent: 30 });
-
-      // Safely decode audio data
-      let audioBuffer: AudioBuffer;
-      try {
-        audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      } catch (err) {
-        throw new Error("Failed to decode audio file");
-      }
-      setProgress({ status: "processing", percent: 60 });
-
-      const processedBuffer = await process8DAudio(audioContext, audioBuffer);
-      setProgress({ status: "encoding", percent: 90 });
-
-      const wavBlob = float32ToWav(processedBuffer, audioContext.sampleRate);
-      const convertedUrl = URL.createObjectURL(wavBlob);
-      console.log("Converted URL:", convertedUrl);
+      setProgress({ status: "encoding", percent: 88 });
+      const wavBlob = float32ToWav(processedBuffer);
+      const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
 
       setAudioFiles((prev) =>
         prev.map((f, i) =>
@@ -129,314 +142,259 @@ export default function AudioConverter() {
         )
       );
       setProgress({ status: "complete", percent: 100 });
-
-      // Clean up AudioContext
-      await audioContext.close();
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error
-          ? err.message
-          : "Conversion failed. Please try again.";
+    } catch (err: any) {
+      console.error("Audio conversion failed:", err);
+      const msg =
+        err?.message ||
+        "Could not convert audio. Please ensure the file is a valid audio track.";
       setAudioFiles((prev) =>
         prev.map((f, i) =>
-          i === index ? { ...f, status: "error", error: errorMessage } : f
+          i === index ? { ...f, status: "error", error: msg } : f
         )
       );
-      setError(errorMessage);
+      setError(msg);
+    } finally {
+      if (audioContext && audioContext.state !== "closed") {
+        try {
+          await audioContext.close();
+        } catch {}
+      }
     }
   };
 
-  // Function to create 8D audio effect with panning
-  const process8DAudio = async (
-    audioContext: AudioContext,
-    audioBuffer: AudioBuffer
-  ): Promise<AudioBuffer> => {
-    const offlineContext = new OfflineAudioContext(
-      2, // Force stereo output
-      audioBuffer.length,
-      audioBuffer.sampleRate
-    );
-  
-    // Create source and split into stereo channels
-    const source = offlineContext.createBufferSource();
-    source.buffer = audioBuffer;
-  
-    // Bass Boost Filter
-    const bassBooster = offlineContext.createBiquadFilter();
-    bassBooster.type = 'lowshelf';
-    bassBooster.frequency.value = 100; // Target low frequencies
-    bassBooster.gain.value = 4; // Moderate bass boost
-  
-    // Create stereo panners for 3D audio movement
-    const leftPanner = offlineContext.createStereoPanner();
-    const rightPanner = offlineContext.createStereoPanner();
-  
-    // Convolver for spatial realism
-    const convolver = offlineContext.createConvolver();
-    
-    // Generate impulse response for spatial effect
-    const impulseResponseLength = audioContext.sampleRate;
-    const impulseBuffer = offlineContext.createBuffer(
-      2, 
-      impulseResponseLength, 
-      audioContext.sampleRate
-    );
-    
-    // Create a complex spatial impulse response
-    for (let channel = 0; channel < 2; channel++) {
-      const channelData = impulseBuffer.getChannelData(channel);
-      for (let i = 0; i < impulseResponseLength; i++) {
-        // Exponential decay with random modulation
-        const decay = Math.exp(-i / (impulseResponseLength / 10));
-        const modulation = Math.sin(i * 0.1) * 0.2;
-        channelData[i] = (Math.random() * 2 - 1) * decay * (1 + modulation);
-      }
+  const handleReconvert = async (index: number) => {
+    const target = audioFiles[index];
+    if (!target) return;
+    if (target.convertedUrl) {
+      try {
+        URL.revokeObjectURL(target.convertedUrl);
+      } catch {}
     }
-    
-    convolver.buffer = impulseBuffer;
-  
-    // More dynamic panning algorithm
-    const panningSequence = (t: number) => {
-      // Complex sinusoidal panning with varying movement
-      const leftPan = Math.sin(t * 2) * 0.9; // Wider left movement
-      const rightPan = Math.cos(t * 2.2) * 0.9; // Slightly offset right movement
-      return { left: leftPan, right: rightPan };
-    };
-  
-    // Create dynamics compressor for balanced sound
-    const dynamicsCompressor = offlineContext.createDynamicsCompressor();
-    dynamicsCompressor.threshold.value = -24;
-    dynamicsCompressor.knee.value = 40;
-    dynamicsCompressor.ratio.value = 12;
-    dynamicsCompressor.attack.value = 0;
-    dynamicsCompressor.release.value = 0.25;
-  
-    // Split source into two channels for precise control
-    const splitter = offlineContext.createChannelSplitter(2);
-    const merger = offlineContext.createChannelMerger(2);
-  
-    // Connection chain
-    source.connect(splitter);
-    
-    // Left channel processing
-    splitter.connect(bassBooster, 0);
-    bassBooster.connect(leftPanner);
-    leftPanner.connect(merger, 0, 0);
-    
-    // Right channel processing
-    splitter.connect(rightPanner, 1);
-    rightPanner.connect(merger, 0, 1);
-  
-    // Add convolver for spatial depth
-    merger.connect(convolver);
-    convolver.connect(dynamicsCompressor);
-    dynamicsCompressor.connect(offlineContext.destination);
-  
-    // Animate panning and bass throughout the audio duration
-    for (let t = 0; t < audioBuffer.duration; t += 0.05) {
-      const { left, right } = panningSequence(t);
-      
-      // Dynamic panning
-      leftPanner.pan.setValueAtTime(left, t);
-      rightPanner.pan.setValueAtTime(right, t);
-      
-      // Optional: Dynamic bass boost (can be commented out if too intense)
-      const bassMod = Math.abs(Math.sin(t * 1.5)) * 2;
-      bassBooster.gain.setValueAtTime(4 + bassMod, t);
-    }
-  
-    source.start();
-    return await offlineContext.startRendering();
+    await runConversion(target.file, index);
   };
 
-  // Convert Float32 AudioBuffer to WAV Blob
-  const float32ToWav = (audioBuffer: AudioBuffer, sampleRate: number): Blob => {
-    const numChannels = audioBuffer.numberOfChannels;
-    const length = audioBuffer.length * numChannels * 2 + 44;
-    const wavBuffer = new ArrayBuffer(length);
-    const view = new DataView(wavBuffer);
-
-    function writeString(view: DataView, offset: number, string: string) {
-      for (let i = 0; i < string.length; i++) {
-        view.setUint8(offset + i, string.charCodeAt(i));
-      }
-    }
-
-    // RIFF/WAVE header
-    writeString(view, 0, "RIFF");
-    view.setUint32(4, 36 + audioBuffer.length * numChannels * 2, true);
-    writeString(view, 8, "WAVE");
-    writeString(view, 12, "fmt ");
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, numChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * numChannels * 2, true);
-    view.setUint16(32, numChannels * 2, true);
-    view.setUint16(34, 16, true);
-    writeString(view, 36, "data");
-    view.setUint32(40, audioBuffer.length * numChannels * 2, true);
-
-    let offset = 44;
-    for (let i = 0; i < audioBuffer.length; i++) {
-      for (let channel = 0; channel < numChannels; channel++) {
-        const sample = Math.max(
-          -1,
-          Math.min(1, audioBuffer.getChannelData(channel)[i])
-        );
-        view.setInt16(
-          offset,
-          sample < 0 ? sample * 0x8000 : sample * 0x7fff,
-          true
-        );
-        offset += 2;
-      }
-    }
-
-    return new Blob([view], { type: "audio/wav" });
-  };
-
-  // Also update the handleDownload function to ensure it works properly:
   const handleDownload = (convertedUrl: string, originalFileName: string) => {
     try {
       const link = document.createElement("a");
       link.href = convertedUrl;
-      link.download = `8D_${originalFileName.replace(/\.[^/.]+$/, "")}.wav`;
+      const baseName = originalFileName.replace(/\.[^/.]+$/, "");
+      link.download = `${baseName}_8D.wav`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    } catch (error) {
-      console.error("Download error:", error);
-      setError("Failed to download the converted file. Please try again.");
+    } catch (err) {
+      console.error("Download error:", err);
+      setError("Failed to download file. Please try again.");
     }
   };
 
   const removeFile = (index: number) => {
     setAudioFiles((prev) => {
-      const newFiles = [...prev];
-      if (newFiles[index].originalUrl) {
-        URL.revokeObjectURL(newFiles[index].originalUrl);
+      const target = prev[index];
+      if (target) {
+        if (target.originalUrl) URL.revokeObjectURL(target.originalUrl);
+        if (target.convertedUrl) URL.revokeObjectURL(target.convertedUrl);
       }
-      if (newFiles[index].convertedUrl) {
-        URL.revokeObjectURL(newFiles[index].convertedUrl);
-      }
-      newFiles.splice(index, 1);
-      return newFiles;
+      return prev.filter((_, i) => i !== index);
     });
+    if (playingFileIndex === index) {
+      setPlayingFileIndex(null);
+    }
   };
 
+  const isConvertingAny = audioFiles.some((f) => f.status === "converting");
+
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6 max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">
-          8D Audio Converter
-        </h2>
-        <p className="text-gray-600">
-          Convert your audio files to immersive 8D audio
-        </p>
-      </div>
+    <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-6 sm:p-8 max-w-4xl mx-auto">
+      {/* Settings & Presets Drawer */}
+      <AudioSettings
+        options={options}
+        onChange={setOptions}
+        disabled={isConvertingAny}
+      />
 
       {error && (
-        <Alert variant="destructive" className="mb-4">
-          <AlertCircle className="h-4 w-4" />
+        <Alert variant="destructive" className="mb-6">
+          <AlertCircle className="h-5 w-5" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
-      {!audioFiles.length && (
+      {/* Upload Dropzone */}
+      {audioFiles.length === 0 && (
         <UploadForm
           onUpload={handleFileUpload}
-          isConverting={false}
+          isConverting={isConvertingAny}
           maxFileSize={MAX_FILE_SIZE}
           supportedFormats={SUPPORTED_FORMATS}
         />
       )}
 
+      {/* File Processing & Results List */}
       {audioFiles.length > 0 && (
-        <div className="space-y-6">
-          {audioFiles.map((audioFile, index) => (
-            <div key={index} className="bg-gray-50 rounded-lg p-4 relative">
-              <button
-                onClick={() => removeFile(index)}
-                className="absolute top-2 right-2 p-1 hover:bg-gray-200 rounded-full"
+        <div className="space-y-8">
+          {audioFiles.map((audioFile, index) => {
+            const isThisPlaying = playingFileIndex === index;
+
+            return (
+              <div
+                key={index}
+                className="bg-slate-50 border border-slate-200 rounded-2xl p-5 sm:p-6 relative transition-all shadow-sm"
               >
-                <X className="h-4 w-4 text-gray-500" />
-              </button>
+                {/* Remove File Button */}
+                <button
+                  type="button"
+                  onClick={() => removeFile(index)}
+                  className="absolute top-4 right-4 p-1.5 hover:bg-slate-200 rounded-full text-slate-400 hover:text-slate-700 transition-colors"
+                  title="Remove file"
+                  aria-label="Remove audio file"
+                >
+                  <X className="h-4 w-4" />
+                </button>
 
-              <div className="mb-4">
-                <h3 className="font-semibold text-gray-800">
-                  {audioFile.file.name}
-                </h3>
-                <p className="text-sm text-gray-500">
-                  {(audioFile.file.size / 1024 / 1024).toFixed(2)} MB
-                </p>
-              </div>
-
-              {audioFile.status === "converting" && (
-                <div className="mb-4">
-                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-blue-500 transition-all duration-300"
-                      style={{ width: `${progress.percent}%` }}
-                    />
-                  </div>
-                  <p className="text-sm text-gray-600 mt-1">
-                    {progress.status === "preparing" && "Preparing audio..."}
-                    {progress.status === "processing" &&
-                      "Processing 8D effect..."}
-                    {progress.status === "encoding" &&
-                      "Encoding final audio..."}
+                {/* File Title & Size */}
+                <div className="mb-5 pr-8">
+                  <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                    {audioFile.file.name}
+                    {audioFile.status === "complete" && (
+                      <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3" />
+                        8D Ready
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-mono mt-0.5">
+                    {(audioFile.file.size / (1024 * 1024)).toFixed(2)} MB
                   </p>
                 </div>
-              )}
 
-              {audioFile.status === "error" && (
-                <Alert variant="destructive" className="mb-4">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{audioFile.error}</AlertDescription>
-                </Alert>
-              )}
-
-              {audioFile.originalUrl && (
-                <div className="mb-4">
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">
-                    Original Audio
-                  </h4>
-                  <AudioPlayer src={audioFile.originalUrl} />
-                </div>
-              )}
-
-              {audioFile.convertedUrl && (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-sm font-medium text-gray-700">
-                      8D Audio (Use Headphones)
-                    </h4>
-                    <button
-                      onClick={() =>
-                        handleDownload(
-                          audioFile.convertedUrl!,
-                          audioFile.file.name
-                        )
-                      }
-                      className="flex items-center gap-2 px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-                    >
-                      <Download className="h-4 w-4" />
-                      <span>Download</span>
-                    </button>
+                {/* Progress Bar */}
+                {audioFile.status === "converting" && (
+                  <div className="mb-6 p-4 bg-white rounded-xl border border-blue-100 shadow-sm space-y-2">
+                    <div className="flex justify-between text-xs font-medium text-slate-600">
+                      <span className="capitalize">
+                        {progress.status === "reading" && "Reading audio data..."}
+                        {progress.status === "decoding" && "Decoding waveform..."}
+                        {progress.status === "processing" && "Applying 3D HRTF rotation & spatial reverb..."}
+                        {progress.status === "encoding" && "Encoding 16-bit PCM stereo WAV..."}
+                        {progress.status === "complete" && "Completed!"}
+                      </span>
+                      <span className="font-mono text-blue-600 font-bold">
+                        {progress.percent}%
+                      </span>
+                    </div>
+                    <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-blue-600 to-indigo-600 transition-all duration-300 rounded-full"
+                        style={{ width: `${progress.percent}%` }}
+                      />
+                    </div>
                   </div>
-                  <AudioPlayer src={audioFile.convertedUrl} />
-                </div>
-              )}
-            </div>
-          ))}
+                )}
 
-          <button
-            onClick={() => setAudioFiles([])}
-            className="w-full py-2 px-4 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-          >
-            Convert More Files
-          </button>
+                {/* Error Banner */}
+                {audioFile.status === "error" && (
+                  <Alert variant="destructive" className="mb-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{audioFile.error}</AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Interactive 3D Visualizer & 8D Audio Player */}
+                {audioFile.status === "complete" && audioFile.convertedUrl && (
+                  <div className="space-y-6">
+                    {/* 3D Orbit Radar */}
+                    <div className="flex justify-center">
+                      <OrbitVisualizer
+                        isPlaying={isThisPlaying}
+                        options={options}
+                        currentTime={activePlaybackTime}
+                      />
+                    </div>
+
+                    {/* 8D Converted Player & Download */}
+                    <div className="space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-slate-800">
+                            🎧 8D Spatial Audio
+                          </span>
+                          <span className="text-xs text-blue-600 font-medium">
+                            (Wear headphones for 360° effect)
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleReconvert(index)}
+                            title="Re-apply updated settings"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition-colors"
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" />
+                            <span>Re-apply Settings</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleDownload(
+                                audioFile.convertedUrl!,
+                                audioFile.file.name
+                              )
+                            }
+                            className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm hover:shadow transition-all"
+                          >
+                            <Download className="h-4 w-4" />
+                            <span>Download 8D WAV</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <AudioPlayer
+                        src={audioFile.convertedUrl}
+                        title="Converted 8D Track"
+                        onPlayStateChange={(playing) => {
+                          if (playing) {
+                            setPlayingFileIndex(index);
+                          } else if (playingFileIndex === index) {
+                            setPlayingFileIndex(null);
+                          }
+                        }}
+                        onTimeUpdate={(t) => {
+                          if (playingFileIndex === index) {
+                            setActivePlaybackTime(t);
+                          }
+                        }}
+                      />
+                    </div>
+
+                    {/* Original Track Preview (A/B Comparison) */}
+                    <div className="pt-2 border-t border-slate-200/80">
+                      <span className="text-xs font-medium text-slate-500 mb-2 block">
+                        Original Flat Audio (A/B Comparison)
+                      </span>
+                      <AudioPlayer
+                        src={audioFile.originalUrl}
+                        title="Original Audio"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Action Row */}
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setAudioFiles([])}
+              className="flex-1 py-3 px-4 border border-slate-300 text-slate-700 font-medium rounded-xl hover:bg-slate-50 transition-colors text-sm"
+            >
+              Clear & Convert More Files
+            </button>
+          </div>
         </div>
       )}
     </div>
