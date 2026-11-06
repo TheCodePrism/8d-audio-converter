@@ -124,6 +124,9 @@ export default function AudioConverter() {
 
     setAudioFiles((prev) => {
       const updated = [...prev, ...newItems];
+      if (prev.length === 0) {
+        setCurrentTrackIndex(0);
+      }
       return updated;
     });
 
@@ -160,7 +163,10 @@ export default function AudioConverter() {
 
     setAudioFiles((prev) => {
       const updated = [...prev, item];
-      setCurrentTrackIndex(updated.length - 1);
+      // Only set active track if queue was previously empty
+      if (prev.length === 0) {
+        setCurrentTrackIndex(0);
+      }
       return updated;
     });
 
@@ -249,7 +255,10 @@ export default function AudioConverter() {
 
     setAudioFiles((prev) => {
       const updated = [...prev, item];
-      setCurrentTrackIndex(updated.length - 1);
+      // Only set active track if queue was previously empty
+      if (prev.length === 0) {
+        setCurrentTrackIndex(0);
+      }
       return updated;
     });
 
@@ -469,13 +478,19 @@ export default function AudioConverter() {
                 onTimeUpdate={setActivePlaybackTime}
                 onPlayStateChange={setIsPlaying}
                 onNext={() => {
-                  if (currentTrackIndex < audioFiles.length - 1) {
-                    setCurrentTrackIndex((prev) => prev + 1);
-                  }
+                  // Skip over pending/converting/error tracks — only jump to next complete
+                  const nextIdx = audioFiles.findIndex(
+                    (f, i) => i > currentTrackIndex && f.status === "complete"
+                  );
+                  if (nextIdx !== -1) setCurrentTrackIndex(nextIdx);
                 }}
                 onPrev={() => {
-                  if (currentTrackIndex > 0) {
-                    setCurrentTrackIndex((prev) => prev - 1);
+                  // Walk backwards to previous complete track
+                  for (let i = currentTrackIndex - 1; i >= 0; i--) {
+                    if (audioFiles[i].status === "complete") {
+                      setCurrentTrackIndex(i);
+                      break;
+                    }
                   }
                 }}
               />

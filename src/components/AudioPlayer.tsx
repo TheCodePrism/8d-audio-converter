@@ -53,28 +53,50 @@ export default function AudioPlayer({
   const [playbackMode, setPlaybackMode] = useState<"8d" | "original">("8d");
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastTitleRef = useRef(title);
+  // Ref to avoid stale closure when reading isPlaying inside effects
+  const isPlayingRef = useRef(isPlaying);
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+  // Ref to track currentTime & duration without adding them to effect deps
+  const currentTimeRef = useRef(currentTime);
+  const durationRef = useRef(duration);
+  useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
+  useEffect(() => { durationRef.current = duration; }, [duration]);
 
   // Determine active source based on A/B mode
   const activeSource =
     playbackMode === "original" && originalSrc ? originalSrc : src;
 
-  // Sync state whenever active source changes
+  // Sync state whenever active source changes or song changes
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
-    const prevTime = currentTime;
+    const isSameTrack = lastTitleRef.current === title;
+    lastTitleRef.current = title;
+
     audio.src = activeSource;
     audio.load();
 
-    if (prevTime > 0 && prevTime < duration) {
-      audio.currentTime = prevTime;
+    if (isSameTrack) {
+      // A/B switch on the same track: preserve current playback position
+      const ct = currentTimeRef.current;
+      const dur = durationRef.current;
+      if (ct > 0 && ct < dur) {
+        audio.currentTime = ct;
+      }
+    } else {
+      // Different track: restart at 0:00
+      audio.currentTime = 0;
+      setCurrentTime(0);
     }
 
-    if (isPlaying) {
+    if (isPlayingRef.current) {
       audio.play().catch(() => {});
     }
-  }, [activeSource]);
+  }, [activeSource, title]);
 
   useEffect(() => {
     const audio = audioRef.current;
