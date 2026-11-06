@@ -38,13 +38,26 @@ function getCookieArgs() {
   if (process.env.YOUTUBE_COOKIES) {
     const tmpCookies = path.join(process.env.TEMP || "/tmp", "yt_cookies.txt");
     try {
-      const raw = process.env.YOUTUBE_COOKIES.trim();
-      // Handle escaped newlines if Render or the user passed them as single-line \n
-      const cookieData = raw.includes("\\n") && !raw.includes("\n")
-        ? raw.replace(/\\n/g, "\n")
-        : raw;
-      require("fs").writeFileSync(tmpCookies, cookieData, "utf8");
-      return ["--cookies", tmpCookies];
+      let raw = process.env.YOUTUBE_COOKIES.trim();
+      if (
+        (raw.startsWith('"') && raw.endsWith('"')) ||
+        (raw.startsWith("'") && raw.endsWith("'"))
+      ) {
+        raw = raw.slice(1, -1);
+      }
+      const cookieData =
+        raw.includes("\\n") && !raw.includes("\n")
+          ? raw.replace(/\\n/g, "\n")
+          : raw;
+
+      // Only pass cookies if it contains legitimate Netscape cookie lines
+      if (
+        cookieData.length > 50 &&
+        (cookieData.includes(".youtube.com") || cookieData.includes("# Netscape"))
+      ) {
+        require("fs").writeFileSync(tmpCookies, cookieData, "utf8");
+        return ["--cookies", tmpCookies];
+      }
     } catch (err) {
       console.error("Failed to write temporary cookies file:", err);
     }
@@ -116,10 +129,8 @@ app.post("/youtube/info", async (req, res) => {
     const cleanUrl = cleanYouTubeUrl(url);
     const ytDlpBinary = getYtDlpPath();
     const args = [
-      "--js-runtimes",
-      "node",
-      "--impersonate",
-      "chrome",
+      "--extractor-args",
+      "youtube:player_client=tv,mweb,default",
       "--force-ipv4",
       ...getCookieArgs(),
       "--dump-single-json",
@@ -225,10 +236,8 @@ app.get("/youtube/stream", (req, res) => {
     const ytDlpBinary = getYtDlpPath();
 
     const args = [
-      "--js-runtimes",
-      "node",
-      "--impersonate",
-      "chrome",
+      "--extractor-args",
+      "youtube:player_client=tv,mweb,default",
       "--force-ipv4",
       ...getCookieArgs(),
       "-f",
