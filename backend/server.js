@@ -169,6 +169,10 @@ app.post("/youtube/info", async (req, res) => {
     const cookieArgs = getCookieArgs();
 
     const baseArgs = [
+      "--js-runtimes",
+      "deno,node",
+      "--remote-components",
+      "ejs:github",
       "--extractor-args",
       "youtube:player_client=tv,mweb,default",
       "--force-ipv4",
@@ -293,6 +297,10 @@ app.get("/youtube/stream", (req, res) => {
     const cookieArgs = getCookieArgs();
 
     const getArgs = (withCookies) => [
+      "--js-runtimes",
+      "deno,node",
+      "--remote-components",
+      "ejs:github",
       "--extractor-args",
       "youtube:player_client=tv,mweb,default",
       "--force-ipv4",
