@@ -117,7 +117,7 @@ app.post("/youtube/info", async (req, res) => {
     const ytDlpBinary = getYtDlpPath();
     const args = [
       "--js-runtimes",
-      "deno,node",
+      "node",
       "--impersonate",
       "chrome",
       "--force-ipv4",
@@ -131,7 +131,7 @@ app.post("/youtube/info", async (req, res) => {
 
     const { stdout } = await execFileAsync(ytDlpBinary, args, {
       maxBuffer: 15 * 1024 * 1024,
-      timeout: 35000,
+      timeout: 60000,
     });
 
     const data = JSON.parse(stdout);
@@ -226,7 +226,7 @@ app.get("/youtube/stream", (req, res) => {
 
     const args = [
       "--js-runtimes",
-      "deno,node",
+      "node",
       "--impersonate",
       "chrome",
       "--force-ipv4",
