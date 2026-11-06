@@ -61,11 +61,12 @@ export const PRESETS: Preset[] = [
 
 /**
  * Generate a synthetic stereo impulse response for spatial room simulation.
+ * Uses high-frequency damping to avoid metallic harshness and comb filtering.
  */
 function createSpatialImpulseResponse(
   context: BaseAudioContext,
-  durationSeconds = 1.6,
-  decayFactor = 2.4
+  durationSeconds = 1.4,
+  decayFactor = 3.2
 ): AudioBuffer {
   const sampleRate = context.sampleRate;
   const length = Math.floor(sampleRate * durationSeconds);
@@ -74,28 +75,40 @@ function createSpatialImpulseResponse(
   const leftChannel = impulse.getChannelData(0);
   const rightChannel = impulse.getChannelData(1);
 
-  // Early reflection points (simulates acoustic reflections from nearby room surfaces)
+  // Subtle early reflection points (simulates acoustic reflections from nearby surfaces)
   const reflections = [
-    { delay: Math.floor(sampleRate * 0.012), gain: 0.65 },
-    { delay: Math.floor(sampleRate * 0.024), gain: -0.45 },
-    { delay: Math.floor(sampleRate * 0.041), gain: 0.35 },
-    { delay: Math.floor(sampleRate * 0.063), gain: -0.25 },
+    { delay: Math.floor(sampleRate * 0.014), gain: 0.25 },
+    { delay: Math.floor(sampleRate * 0.028), gain: -0.18 },
+    { delay: Math.floor(sampleRate * 0.045), gain: 0.12 },
+    { delay: Math.floor(sampleRate * 0.068), gain: -0.08 },
   ];
+
+  // 1-pole lowpass filter state to damp high frequencies progressively (air absorption)
+  let filterL = 0;
+  let filterR = 0;
 
   for (let i = 0; i < length; i++) {
     const t = i / length;
     const env = Math.exp(-decayFactor * t);
 
-    // Diffuse reverberation tail
-    leftChannel[i] = (Math.random() * 2 - 1) * env * 0.4;
-    rightChannel[i] = (Math.random() * 2 - 1) * env * 0.4;
+    // Natural frequency damping: damping coefficient increases as the tail decays
+    const damping = Math.max(0.35, 0.75 - t * 0.4);
+
+    const rawNoiseL = (Math.random() * 2 - 1) * env * 0.22;
+    const rawNoiseR = (Math.random() * 2 - 1) * env * 0.22;
+
+    filterL = filterL * damping + rawNoiseL * (1 - damping);
+    filterR = filterR * damping + rawNoiseR * (1 - damping);
+
+    leftChannel[i] = filterL;
+    rightChannel[i] = filterR;
   }
 
-  // Inject early reflections
+  // Inject early reflections with soft gains to prevent comb filtering
   for (const { delay, gain } of reflections) {
     if (delay < length) {
       leftChannel[delay] += gain;
-      rightChannel[delay + 16] += gain * 0.9;
+      rightChannel[delay + 12] += gain * 0.85;
     }
   }
 
@@ -103,7 +116,26 @@ function createSpatialImpulseResponse(
 }
 
 /**
- * Process audio buffer through the 8D spatial audio DSP pipeline using OfflineAudioContext.
+ * Configure standard HRTF Panner settings for spatial 8D rendering.
+ */
+function configurePanner(panner: PannerNode) {
+  panner.panningModel = "HRTF";
+  panner.distanceModel = "inverse";
+  panner.refDistance = 1.2;
+  panner.maxDistance = 10000;
+  panner.rolloffFactor = 0.65; // Gentle rolloff avoids volume drops during orbit
+  panner.coneInnerAngle = 360;
+}
+
+/**
+ * Process audio buffer through a studio-grade 8D spatial audio DSP pipeline.
+ *
+ * Key upgrades:
+ * 1. Dual-Panner Stereo Orbit: Separates Left & Right channels into dual 3D panners
+ *    with angular separation to preserve full stereo width and prevent mono phase cancellation.
+ * 2. High-Frequency Air Restoration: Restores brilliance/crispness attenuated by HRTF pinna modeling.
+ * 3. Abbey Road Reverb Damping: High-pass and low-pass filtering on wet path to prevent mid/high mud.
+ * 4. Transparent Master Limiter: Replaces harsh compression with transparent transient-preserving limiting.
  */
 export async function process8DAudio(
   audioBuffer: AudioBuffer,
@@ -112,6 +144,7 @@ export async function process8DAudio(
   const sampleRate = audioBuffer.sampleRate;
   const duration = audioBuffer.duration;
   const length = audioBuffer.length;
+  const numChannels = audioBuffer.numberOfChannels;
 
   // Initialize offline rendering context for 2-channel stereo output
   const offlineContext = new OfflineAudioContext(2, length, sampleRate);
@@ -120,94 +153,128 @@ export async function process8DAudio(
   const source = offlineContext.createBufferSource();
   source.buffer = audioBuffer;
 
-  // 2. Symmetric Bass Booster (Lowshelf Filter)
+  // 2. High-Shelf Air & Presence Filter (+2.2 dB @ 9 kHz)
+  // Restores brilliance and crispness that HRTF head-shadow and ear-pinna emulation naturally rolls off.
+  const presenceFilter = offlineContext.createBiquadFilter();
+  presenceFilter.type = "highshelf";
+  presenceFilter.frequency.value = 9000;
+  presenceFilter.gain.value = 2.2;
+
+  // 3. Low-Shelf Bass Booster
   const bassFilter = offlineContext.createBiquadFilter();
   bassFilter.type = "lowshelf";
   bassFilter.frequency.value = 95;
   bassFilter.gain.value = Math.max(0, Math.min(12, options.bassBoost));
 
-  // 3. 3D Spatial Panning Node (HRTF)
-  const panner = offlineContext.createPanner();
-  panner.panningModel = "HRTF";
-  panner.distanceModel = "inverse";
-  panner.refDistance = 1;
-  panner.maxDistance = 10000;
-  panner.rolloffFactor = 1;
-  panner.coneInnerAngle = 360;
+  // Connect EQ chain: Source -> Presence (Air) -> Bass Boost
+  source.connect(presenceFilter);
+  presenceFilter.connect(bassFilter);
 
-  // 4. Parallel Dry & Wet (Reverb) Routing
+  // 4. Stereo Channel Splitter (Preserves stereo width, avoids mono downmix phase cancellation)
+  const splitter = offlineContext.createChannelSplitter(2);
+  bassFilter.connect(splitter);
+
+  // 5. Dual 3D Panners for True Stereo Orbiting
+  const leftPanner = offlineContext.createPanner();
+  const rightPanner = offlineContext.createPanner();
+  configurePanner(leftPanner);
+  configurePanner(rightPanner);
+
+  // Route Left channel to Left Panner, Right channel to Right Panner
+  // (If mono audio file, route channel 0 to both)
+  splitter.connect(leftPanner, 0);
+  splitter.connect(rightPanner, numChannels > 1 ? 1 : 0);
+
+  // 6. Parallel Dry & Wet Routing
   const dryGain = offlineContext.createGain();
   const wetGain = offlineContext.createGain();
-  const reverbMixer = offlineContext.createGain();
 
-  const wetLevel = Math.max(0, Math.min(0.5, options.reverbLevel));
-  dryGain.gain.value = 1.0 - wetLevel * 0.4; // Maintain direct signal clarity
-  wetGain.gain.value = wetLevel * 0.9;
+  const wetLevel = Math.max(0, Math.min(0.45, options.reverbLevel));
+  dryGain.gain.value = 1.0; // Keep direct signal clean at full fidelity
+  wetGain.gain.value = wetLevel * 0.65;
 
-  // Convolver for spatial reverb
+  // 7. Studio Reverb with "Abbey Road" Bandpass (Cuts low mud < 220Hz, cuts harsh sizzle > 6.5kHz)
   const convolver = offlineContext.createConvolver();
   convolver.buffer = createSpatialImpulseResponse(offlineContext);
 
-  // 5. Dynamics Compressor (Prevents distortion and keeps volume level balanced)
-  const compressor = offlineContext.createDynamicsCompressor();
-  compressor.threshold.value = -18;
-  compressor.knee.value = 30;
-  compressor.ratio.value = 8;
-  compressor.attack.value = 0.003;
-  compressor.release.value = 0.2;
+  const reverbHpFilter = offlineContext.createBiquadFilter();
+  reverbHpFilter.type = "highpass";
+  reverbHpFilter.frequency.value = 220; // Cuts muddy sub-frequencies from the room tail
 
-  // --- Graph Connections ---
-  // source -> bassFilter
-  source.connect(bassFilter);
+  const reverbLpFilter = offlineContext.createBiquadFilter();
+  reverbLpFilter.type = "lowpass";
+  reverbLpFilter.frequency.value = 6500; // Cuts harsh sibilance/cymbals from clattering in the reverb
 
-  // bassFilter -> panner (audio rotates in space)
-  bassFilter.connect(panner);
+  // Connect Reverb Chain
+  leftPanner.connect(wetGain);
+  rightPanner.connect(wetGain);
+  wetGain.connect(reverbHpFilter);
+  reverbHpFilter.connect(reverbLpFilter);
+  reverbLpFilter.connect(convolver);
 
-  // panner -> dry branch
-  panner.connect(dryGain);
-  dryGain.connect(compressor);
+  // Connect Dry Chain
+  leftPanner.connect(dryGain);
+  rightPanner.connect(dryGain);
 
-  // panner -> wet branch (reverb)
-  panner.connect(wetGain);
-  wetGain.connect(convolver);
-  convolver.connect(compressor);
+  // 8. Transparent Mastering Limiter (Preserves punch and snare/vocal transients)
+  const masterLimiter = offlineContext.createDynamicsCompressor();
+  masterLimiter.threshold.value = -2.5; // Transparent ceiling
+  masterLimiter.knee.value = 10;
+  masterLimiter.ratio.value = 3.0; // Gentle limiter curve
+  masterLimiter.attack.value = 0.012; // 12ms preserves transient snap
+  masterLimiter.release.value = 0.15;
 
-  // compressor -> destination
-  compressor.connect(offlineContext.destination);
+  dryGain.connect(masterLimiter);
+  convolver.connect(masterLimiter);
+  masterLimiter.connect(offlineContext.destination);
 
-  // --- Dynamic 360-Degree Circular Orbit Automation ---
+  // --- Dynamic 360-Degree Circular Orbit Automation with Stereo Spread ---
   const speed = Math.max(3, options.rotationSpeed);
   const radius = Math.max(1, options.spatialRadius);
   const dirMultiplier = options.direction === "counter-clockwise" ? -1 : 1;
+  const stereoAngularSpread = 0.28; // ~16 degree angular spread keeps the soundstage wide
 
-  // Schedule smooth HRTF orbit coordinates using linear ramps
   const stepInterval = 0.05; // 20 trajectory updates per second
   const hasAudioParamPosition =
-    panner.positionX && typeof panner.positionX.setValueAtTime === "function";
+    leftPanner.positionX && typeof leftPanner.positionX.setValueAtTime === "function";
 
   if (hasAudioParamPosition) {
-    panner.positionY.setValueAtTime(0, 0);
+    leftPanner.positionY.setValueAtTime(0, 0);
+    rightPanner.positionY.setValueAtTime(0, 0);
 
     for (let t = 0; t < duration; t += stepInterval) {
-      const angle = dirMultiplier * ((2 * Math.PI * t) / speed);
-      const x = radius * Math.sin(angle);
-      const z = -radius * Math.cos(angle);
+      const baseAngle = dirMultiplier * ((2 * Math.PI * t) / speed);
+
+      // Left and Right channels maintain independent orbital coordinates
+      const angleL = baseAngle - stereoAngularSpread;
+      const angleR = baseAngle + stereoAngularSpread;
+
+      const xL = radius * Math.sin(angleL);
+      const zL = -radius * Math.cos(angleL);
+
+      const xR = radius * Math.sin(angleR);
+      const zR = -radius * Math.cos(angleR);
 
       if (t === 0) {
-        panner.positionX.setValueAtTime(x, 0);
-        panner.positionZ.setValueAtTime(z, 0);
+        leftPanner.positionX.setValueAtTime(xL, 0);
+        leftPanner.positionZ.setValueAtTime(zL, 0);
+        rightPanner.positionX.setValueAtTime(xR, 0);
+        rightPanner.positionZ.setValueAtTime(zR, 0);
       } else {
-        panner.positionX.linearRampToValueAtTime(x, t);
-        panner.positionZ.linearRampToValueAtTime(z, t);
+        leftPanner.positionX.linearRampToValueAtTime(xL, t);
+        leftPanner.positionZ.linearRampToValueAtTime(zL, t);
+        rightPanner.positionX.linearRampToValueAtTime(xR, t);
+        rightPanner.positionZ.linearRampToValueAtTime(zR, t);
       }
     }
   } else {
     // Fallback for older Web Audio implementations
     for (let t = 0; t < duration; t += stepInterval) {
-      const angle = dirMultiplier * ((2 * Math.PI * t) / speed);
-      const x = radius * Math.sin(angle);
-      const z = -radius * Math.cos(angle);
-      (panner as any).setPosition(x, 0, z);
+      const baseAngle = dirMultiplier * ((2 * Math.PI * t) / speed);
+      const angleL = baseAngle - stereoAngularSpread;
+      const angleR = baseAngle + stereoAngularSpread;
+      (leftPanner as any).setPosition(radius * Math.sin(angleL), 0, -radius * Math.cos(angleL));
+      (rightPanner as any).setPosition(radius * Math.sin(angleR), 0, -radius * Math.cos(angleR));
     }
   }
 
