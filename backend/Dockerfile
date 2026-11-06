@@ -23,9 +23,8 @@ ENV DENO_INSTALL="/usr/local"
 ENV PATH="${DENO_INSTALL}/bin:${PATH}"
 RUN curl -fsSL https://deno.land/install.sh | sh
 
-# Install yt-dlp-ejs challenge solver package & latest yt-dlp with curl-cffi
-RUN npm install -g yt-dlp-ejs \
-    && pip3 install --no-cache-dir --break-system-packages -U --pre "yt-dlp[default,curl-cffi]"
+# Install latest yt-dlp with curl-cffi
+RUN pip3 install --no-cache-dir --break-system-packages -U --pre "yt-dlp[default,curl-cffi]"
 
 WORKDIR /app
 
