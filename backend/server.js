@@ -29,7 +29,7 @@ function getYtDlpPath() {
   return "yt-dlp"; // fallback: rely on PATH
 }
 
-// ── URL validation ────────────────────────────────────────────────────────────
+// ── URL validation & cleaning ────────────────────────────────────────────────
 function isValidYouTubeUrl(urlStr) {
   try {
     const parsed = new URL(urlStr);
@@ -43,6 +43,21 @@ function isValidYouTubeUrl(urlStr) {
     return validHosts.includes(parsed.hostname);
   } catch {
     return false;
+  }
+}
+
+function cleanYouTubeUrl(urlStr) {
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.hostname === "youtu.be") {
+      const id = parsed.pathname.replace(/^\//, "");
+      return `https://www.youtube.com/watch?v=${id}`;
+    }
+    parsed.searchParams.delete("si");
+    parsed.searchParams.delete("feature");
+    return parsed.toString();
+  } catch {
+    return urlStr;
   }
 }
 
@@ -63,8 +78,11 @@ app.post("/youtube/info", async (req, res) => {
   }
 
   try {
+    const cleanUrl = cleanYouTubeUrl(url);
     const ytDlpBinary = getYtDlpPath();
     const args = [
+      "--js-runtimes",
+      "node",
       "--extractor-args",
       "youtube:player_client=android,ios,web",
       "--force-ipv4",
@@ -72,7 +90,7 @@ app.post("/youtube/info", async (req, res) => {
       "--flat-playlist",
       "--no-warnings",
       "--no-check-certificates",
-      url,
+      cleanUrl,
     ];
 
     const { stdout } = await execFileAsync(ytDlpBinary, args, {
@@ -143,10 +161,10 @@ app.post("/youtube/info", async (req, res) => {
     let message = "Failed to load YouTube video or playlist info.";
     if (error.code === "ENOENT") {
       message = "yt-dlp is not installed or not found on the server.";
-    } else if (error.stderr) {
-      message = error.stderr.split("\n")[0] || message;
+    } else if (error.stderr && error.stderr.trim()) {
+      message = error.stderr.trim().split("\n").filter(Boolean).pop() || message;
     } else if (error.message) {
-      message = error.message;
+      message = error.message.split("\n")[0] || message;
     }
     res.status(500).json({ error: message });
   }
@@ -162,9 +180,12 @@ app.get("/youtube/stream", (req, res) => {
   }
 
   try {
+    const cleanUrl = cleanYouTubeUrl(videoUrl);
     const ytDlpBinary = getYtDlpPath();
 
     const args = [
+      "--js-runtimes",
+      "node",
       "--extractor-args",
       "youtube:player_client=android,ios,web",
       "--force-ipv4",
@@ -175,7 +196,7 @@ app.get("/youtube/stream", (req, res) => {
       "--no-playlist",
       "--no-warnings",
       "--no-check-certificates",
-      videoUrl,
+      cleanUrl,
     ];
 
     const child = spawn(ytDlpBinary, args);
