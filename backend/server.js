@@ -38,9 +38,16 @@ function getCookieArgs() {
   if (process.env.YOUTUBE_COOKIES) {
     const tmpCookies = path.join(process.env.TEMP || "/tmp", "yt_cookies.txt");
     try {
-      require("fs").writeFileSync(tmpCookies, process.env.YOUTUBE_COOKIES, "utf8");
+      const raw = process.env.YOUTUBE_COOKIES.trim();
+      // Handle escaped newlines if Render or the user passed them as single-line \n
+      const cookieData = raw.includes("\\n") && !raw.includes("\n")
+        ? raw.replace(/\\n/g, "\n")
+        : raw;
+      require("fs").writeFileSync(tmpCookies, cookieData, "utf8");
       return ["--cookies", tmpCookies];
-    } catch {}
+    } catch (err) {
+      console.error("Failed to write temporary cookies file:", err);
+    }
   }
   return [];
 }
@@ -109,6 +116,8 @@ app.post("/youtube/info", async (req, res) => {
     const cleanUrl = cleanYouTubeUrl(url);
     const ytDlpBinary = getYtDlpPath();
     const args = [
+      "--js-runtimes",
+      "deno,node",
       "--impersonate",
       "chrome",
       "--force-ipv4",
@@ -216,6 +225,8 @@ app.get("/youtube/stream", (req, res) => {
     const ytDlpBinary = getYtDlpPath();
 
     const args = [
+      "--js-runtimes",
+      "deno,node",
       "--impersonate",
       "chrome",
       "--force-ipv4",
