@@ -95,10 +95,8 @@ app.post("/youtube/info", async (req, res) => {
     const cleanUrl = cleanYouTubeUrl(url);
     const ytDlpBinary = getYtDlpPath();
     const args = [
-      "--js-runtimes",
-      "deno,node",
       "--extractor-args",
-      "youtube:player_client=android,ios,web",
+      "youtube:player_client=mweb,tv_embedded,android_vr",
       "--force-ipv4",
       ...getCookieArgs(),
       "--dump-single-json",
@@ -204,10 +202,8 @@ app.get("/youtube/stream", (req, res) => {
     const ytDlpBinary = getYtDlpPath();
 
     const args = [
-      "--js-runtimes",
-      "deno,node",
       "--extractor-args",
-      "youtube:player_client=android,ios,web",
+      "youtube:player_client=mweb,tv_embedded,android_vr",
       "--force-ipv4",
       ...getCookieArgs(),
       "-f",

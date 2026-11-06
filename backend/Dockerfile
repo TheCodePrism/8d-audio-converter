@@ -8,19 +8,19 @@ RUN npm install --production
 # ---- Runtime stage ----
 FROM node:20-bookworm-slim AS runner
 
-# Install ffmpeg, python3, deno, and latest yt-dlp
+# Install system deps, latest yt-dlp, ffmpeg, and bgutil PO-token provider
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     unzip \
     ffmpeg \
     ca-certificates \
     python3 \
-    && curl -fsSL https://deno.land/install.sh | sh \
-    && mv /root/.deno/bin/deno /usr/local/bin/deno \
+    python3-pip \
+    && pip3 install --break-system-packages -U yt-dlp bgutil-ytdlp-pot-provider \
     && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
        -o /usr/local/bin/yt-dlp \
     && chmod a+rx /usr/local/bin/yt-dlp \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /root/.cache/pip
 
 WORKDIR /app
 
