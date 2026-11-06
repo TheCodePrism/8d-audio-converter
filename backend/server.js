@@ -174,7 +174,7 @@ app.post("/youtube/info", async (req, res) => {
       "--remote-components",
       "ejs:github",
       "--extractor-args",
-      "youtube:player_client=tv,mweb,default",
+      "youtube:player_client=web_embedded,default",
       "--force-ipv4",
       "--dump-single-json",
       "--flat-playlist",
@@ -302,11 +302,11 @@ app.get("/youtube/stream", (req, res) => {
       "--remote-components",
       "ejs:github",
       "--extractor-args",
-      "youtube:player_client=tv,mweb,default",
+      "youtube:player_client=web_embedded,default",
       "--force-ipv4",
       ...(withCookies ? cookieArgs : []),
       "-f",
-      "ba[ext=m4a]/ba/b",
+      "ba/b",
       "-o",
       "-",
       "--no-playlist",
@@ -323,7 +323,7 @@ app.get("/youtube/stream", (req, res) => {
 
       child.stdout.on("data", (chunk) => {
         if (!hasSentHeaders && !res.headersSent) {
-          res.setHeader("Content-Type", "audio/mp4");
+          res.setHeader("Content-Type", "audio/webm, audio/mp4; q=0.9");
           res.setHeader("Cache-Control", "no-cache");
           res.setHeader("Access-Control-Allow-Origin", "*");
           hasSentHeaders = true;
