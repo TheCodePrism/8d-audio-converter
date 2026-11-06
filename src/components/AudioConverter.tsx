@@ -180,8 +180,17 @@ export default function AudioConverter() {
       );
 
       if (!streamRes.ok) {
-        const errJson = await streamRes.json().catch(() => null);
-        throw new Error(errJson?.error || "Failed to download YouTube audio stream.");
+        let errMsg = "Failed to download YouTube audio stream.";
+        try {
+          const text = await streamRes.text();
+          try {
+            const parsed = JSON.parse(text);
+            if (parsed.error) errMsg = parsed.error;
+          } catch {
+            if (text && text.length < 200) errMsg = text;
+          }
+        } catch {}
+        throw new Error(errMsg);
       }
 
       updateItemProgress(item.id, 45);

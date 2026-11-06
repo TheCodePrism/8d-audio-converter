@@ -212,11 +212,15 @@ app.post("/youtube/info", async (req, res) => {
 
     const baseArgs = [
       "--js-runtimes",
-      "deno,node",
+      "deno",
       "--remote-components",
       "ejs:github",
       "--extractor-args",
-      "youtube:player_client=web_embedded,default",
+      "youtube:player_client=android,web",
+      "--add-header",
+      "Referer: https://www.youtube.com/",
+      "--add-header",
+      "Origin: https://www.youtube.com/",
       "--force-ipv4",
       "--dump-single-json",
       "--flat-playlist",
@@ -379,13 +383,17 @@ app.get("/youtube/stream", (req, res) => {
     const ytDlpBinary = getYtDlpPath();
     const cookieArgs = getCookieArgs();
 
-    const getArgs = (withCookies) => [
+    const getArgs = (withCookies, client = "android,web") => [
       "--js-runtimes",
-      "deno,node",
+      "deno",
       "--remote-components",
       "ejs:github",
       "--extractor-args",
-      "youtube:player_client=web_embedded,default",
+      `youtube:player_client=${client}`,
+      "--add-header",
+      "Referer: https://www.youtube.com/",
+      "--add-header",
+      "Origin: https://www.youtube.com/",
       "--force-ipv4",
       ...(withCookies ? cookieArgs : []),
       "-f",
@@ -398,15 +406,15 @@ app.get("/youtube/stream", (req, res) => {
       cleanUrl,
     ];
 
-    const startStream = (useCookies) => {
-      const child = spawn(ytDlpBinary, getArgs(useCookies));
+    const startStream = (useCookies, client = "android,web") => {
+      const child = spawn(ytDlpBinary, getArgs(useCookies, client));
 
       let hasSentHeaders = false;
       let stderr = "";
 
       child.stdout.on("data", (chunk) => {
         if (!hasSentHeaders && !res.headersSent) {
-          res.setHeader("Content-Type", "audio/webm, audio/mp4; q=0.9");
+          res.setHeader("Content-Type", "audio/mp4");
           res.setHeader("Cache-Control", "no-cache");
           res.setHeader("Access-Control-Allow-Origin", "*");
           hasSentHeaders = true;
@@ -435,14 +443,20 @@ app.get("/youtube/stream", (req, res) => {
 
       child.on("close", (code) => {
         if (code !== 0) {
-          console.error(`yt-dlp stream failed (useCookies=${useCookies}) with code:`, code, stderr);
+          console.error(`yt-dlp stream failed (useCookies=${useCookies}, client=${client}) with code ${code}:`, stderr);
           if (!res.headersSent && !hasSentHeaders) {
             if (useCookies && cookieArgs.length > 0) {
               console.warn("[YouTube Auth] Stream with cookies failed. Retrying automatically WITHOUT cookies...");
-              startStream(false);
+              startStream(false, client);
               return;
             }
-            res.status(500).json({ error: "Failed to download audio from YouTube." });
+            if (client === "android,web") {
+              console.warn("[YouTube Auth] Stream with android client failed. Retrying with tv,mweb,web...");
+              startStream(false, "tv,mweb,web");
+              return;
+            }
+            const cleanErr = stderr.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("Command failed:")).pop() || "yt-dlp stream exited.";
+            res.status(500).json({ error: cleanErr });
           } else {
             res.destroy();
           }
