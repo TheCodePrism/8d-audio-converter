@@ -31,20 +31,45 @@ function getYtDlpPath() {
 
 // ── Cookie file handling (bypasses YouTube datacenter bot wall) ───────────────
 function getCookieArgs() {
-  const localCookies = path.join(process.cwd(), "cookies.txt");
-  if (existsSync(localCookies)) {
-    return ["--cookies", localCookies];
+  // 1. Check local file or Render Secret File mount (/etc/secrets/cookies.txt)
+  const candidateFiles = [
+    path.join(process.cwd(), "cookies.txt"),
+    "/etc/secrets/cookies.txt",
+    "/etc/secrets/yt_cookies.txt",
+  ];
+  for (const filePath of candidateFiles) {
+    if (existsSync(filePath)) {
+      console.log(`[YouTube Auth] Using cookies from disk file: ${filePath}`);
+      return ["--cookies", filePath];
+    }
   }
-  if (process.env.YOUTUBE_COOKIES) {
+
+  // 2. Check environment variables (YOUTUBE_COOKIES, COOKIES, YT_COOKIES)
+  const envCookie =
+    process.env.YOUTUBE_COOKIES ||
+    process.env.COOKIES ||
+    process.env.YT_COOKIES;
+
+  if (envCookie) {
     const tmpCookies = path.join(process.env.TEMP || "/tmp", "yt_cookies.txt");
     try {
-      let raw = process.env.YOUTUBE_COOKIES.trim();
+      let raw = envCookie.trim();
+      // Strip outer quotes if pasted with quotes
       if (
         (raw.startsWith('"') && raw.endsWith('"')) ||
         (raw.startsWith("'") && raw.endsWith("'"))
       ) {
         raw = raw.slice(1, -1);
       }
+
+      // Support base64 encoded cookies.txt
+      if (raw.startsWith("I05ldHNjYXBl")) {
+        try {
+          raw = Buffer.from(raw, "base64").toString("utf8");
+        } catch {}
+      }
+
+      // Handle literal escaped newlines (\n) from env var entry
       const cookieData =
         raw.includes("\\n") && !raw.includes("\n")
           ? raw.replace(/\\n/g, "\n")
@@ -56,12 +81,16 @@ function getCookieArgs() {
         (cookieData.includes(".youtube.com") || cookieData.includes("# Netscape"))
       ) {
         require("fs").writeFileSync(tmpCookies, cookieData, "utf8");
+        console.log("[YouTube Auth] Successfully wrote temporary cookies to", tmpCookies);
         return ["--cookies", tmpCookies];
+      } else {
+        console.warn("[YouTube Auth] Environment cookie detected but failed validation checks (too short or missing Netscape/youtube headers). Ignoring.");
       }
     } catch (err) {
-      console.error("Failed to write temporary cookies file:", err);
+      console.error("[YouTube Auth] Failed to write temporary cookies file:", err);
     }
   }
+
   return [];
 }
 function isValidYouTubeUrl(urlStr) {
@@ -129,8 +158,10 @@ app.post("/youtube/info", async (req, res) => {
     const cleanUrl = cleanYouTubeUrl(url);
     const ytDlpBinary = getYtDlpPath();
     const args = [
-      "--extractor-args",
-      "youtube:player_client=tv,mweb,default",
+      "--js-runtimes",
+      "node",
+      "--impersonate",
+      "chrome",
       "--force-ipv4",
       ...getCookieArgs(),
       "--dump-single-json",
@@ -236,8 +267,10 @@ app.get("/youtube/stream", (req, res) => {
     const ytDlpBinary = getYtDlpPath();
 
     const args = [
-      "--extractor-args",
-      "youtube:player_client=tv,mweb,default",
+      "--js-runtimes",
+      "node",
+      "--impersonate",
+      "chrome",
       "--force-ipv4",
       ...getCookieArgs(),
       "-f",
