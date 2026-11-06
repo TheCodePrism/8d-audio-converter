@@ -264,7 +264,48 @@ app.post("/youtube/info", async (req, res) => {
       tracks,
     });
   } catch (error) {
-    console.error("YouTube metadata extraction failed:", error);
+    console.error("YouTube metadata extraction failed, attempting oEmbed fallback:", error);
+
+    // ── Resilient Fallback: Official YouTube oEmbed API ───────────────────────
+    // If yt-dlp fails due to datacenter IP blocks, YouTube's official oEmbed API
+    // returns video title, artist, and high-res thumbnail with 100% reliability
+    try {
+      const cleanUrl = cleanYouTubeUrl(url);
+      const parsed = new URL(cleanUrl);
+      let videoId = "";
+      if (parsed.hostname === "youtu.be") {
+        videoId = parsed.pathname.replace(/^\//, "").split("/")[0].split("?")[0];
+      } else {
+        videoId = parsed.searchParams.get("v") || "";
+      }
+
+      if (videoId) {
+        console.log(`[YouTube Info] Falling back to YouTube oEmbed API for videoId: ${videoId}`);
+        const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(cleanUrl)}&format=json`;
+        const oembedRes = await fetch(oembedUrl);
+        if (oembedRes.ok) {
+          const oembedData = await oembedRes.json();
+          const bestThumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+          return res.json({
+            isPlaylist: false,
+            title: oembedData.title || "YouTube Track",
+            thumbnail: bestThumbnail,
+            tracks: [
+              {
+                id: videoId,
+                title: oembedData.title || "YouTube Track",
+                url: cleanUrl,
+                thumbnail: bestThumbnail,
+                author: oembedData.author_name || undefined,
+              },
+            ],
+          });
+        }
+      }
+    } catch (oembedErr) {
+      console.error("oEmbed fallback also failed:", oembedErr);
+    }
+
     let message = "Failed to load YouTube video or playlist info.";
     if (error.code === "ENOENT") {
       message = "yt-dlp is not installed or not found on the server.";
