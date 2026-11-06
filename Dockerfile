@@ -27,9 +27,10 @@ ENV NODE_ENV=production
 # Build the Next.js application
 RUN npm run build
 
-# Expose default port (Railway automatically injects and maps $PORT)
+# Railway injects $PORT dynamically — Next.js must bind to it
+ENV PORT=3000
 EXPOSE 3000
 
-# Start the Next.js production server
-CMD ["npm", "run", "start"]
+# Start Next.js, binding to $PORT so Railway's proxy can reach it
+CMD ["sh", "-c", "node_modules/.bin/next start -p ${PORT:-3000}"]
 
