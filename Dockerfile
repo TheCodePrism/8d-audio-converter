@@ -15,12 +15,15 @@ RUN npm run build
 # ---- Stage 2: Runner ----
 FROM node:20-bookworm-slim AS runner
 
-# Install system runtime dependencies: ffmpeg, yt-dlp, python3
+# Install system runtime dependencies: ffmpeg, yt-dlp, python3, deno
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    unzip \
     ffmpeg \
     ca-certificates \
     python3 \
+    && curl -fsSL https://deno.land/install.sh | sh \
+    && mv /root/.deno/bin/deno /usr/local/bin/deno \
     && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
        -o /usr/local/bin/yt-dlp \
     && chmod a+rx /usr/local/bin/yt-dlp \
