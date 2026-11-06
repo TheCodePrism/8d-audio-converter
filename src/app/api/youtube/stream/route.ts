@@ -1,10 +1,8 @@
 import { NextRequest } from "next/server";
 
-export const maxDuration = 60; // Allow sufficient time for audio streaming from backend
 export const dynamic = "force-dynamic";
 
-// Proxy to the yt-dlp backend (Render/Railway)
-// Set YOUTUBE_BACKEND_URL in Vercel environment variables
+// Base URL of the yt-dlp backend service (Render/Railway)
 const BACKEND_URL = process.env.YOUTUBE_BACKEND_URL?.replace(/\/+$/, "");
 
 export async function GET(req: NextRequest) {
@@ -26,35 +24,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const backendRes = await fetch(
-      `${BACKEND_URL}/youtube/stream?url=${encodeURIComponent(videoUrl)}`,
-      { headers: { "User-Agent": "8d-audio-converter-proxy/1.0" } }
-    );
-
-    if (!backendRes.ok || !backendRes.body) {
-      const err = await backendRes.text();
-      return new Response(err, {
-        status: backendRes.status,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    const contentType = backendRes.headers.get("content-type") || "audio/mp4";
-    const contentLength = backendRes.headers.get("content-length");
-
-    const headers: Record<string, string> = {
-      "Content-Type": contentType,
-      "Cache-Control": "no-cache",
-      "Access-Control-Allow-Origin": "*",
-    };
-    if (contentLength) headers["Content-Length"] = contentLength;
-
-    return new Response(backendRes.body, { status: 200, headers });
+    // Redirect the browser directly to the Render backend stream endpoint.
+    // The browser's fetch() follows this 307 redirect automatically,
+    // completely eliminating Vercel's 10-second serverless execution timeout!
+    const targetUrl = `${BACKEND_URL}/youtube/stream?url=${encodeURIComponent(videoUrl)}`;
+    return Response.redirect(targetUrl, 307);
   } catch (error: any) {
-    console.error("YouTube stream proxy error:", error);
+    console.error("YouTube stream redirect error:", error);
     return new Response(
-      JSON.stringify({ error: "Failed to reach the YouTube backend service." }),
-      { status: 502, headers: { "Content-Type": "application/json" } }
+      JSON.stringify({ error: "Failed to initialize YouTube audio stream." }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }

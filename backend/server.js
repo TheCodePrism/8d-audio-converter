@@ -216,7 +216,7 @@ app.post("/youtube/info", async (req, res) => {
       "--remote-components",
       "ejs:github",
       "--extractor-args",
-      "youtube:player_client=android,web",
+      "youtube:player_client=tv_samsung,visionos,android,web,default",
       "--add-header",
       "Referer: https://www.youtube.com/",
       "--add-header",
@@ -383,7 +383,7 @@ app.get("/youtube/stream", (req, res) => {
     const ytDlpBinary = getYtDlpPath();
     const cookieArgs = getCookieArgs();
 
-    const getArgs = (withCookies, client = "android,web") => [
+    const getArgs = (withCookies, client = "tv_samsung,visionos,android,web,default") => [
       "--js-runtimes",
       "deno",
       "--remote-components",
@@ -406,7 +406,7 @@ app.get("/youtube/stream", (req, res) => {
       cleanUrl,
     ];
 
-    const startStream = (useCookies, client = "android,web") => {
+    const startStream = (useCookies, client = "tv_samsung,visionos,android,web,default") => {
       const child = spawn(ytDlpBinary, getArgs(useCookies, client));
 
       let hasSentHeaders = false;
@@ -450,9 +450,9 @@ app.get("/youtube/stream", (req, res) => {
               startStream(false, client);
               return;
             }
-            if (client === "android,web") {
-              console.warn("[YouTube Auth] Stream with android client failed. Retrying with tv,mweb,web...");
-              startStream(false, "tv,mweb,web");
+            if (client !== "android,web") {
+              console.warn("[YouTube Auth] Stream failed with primary clients. Retrying with android,web...");
+              startStream(false, "android,web");
               return;
             }
             const cleanErr = stderr.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("Command failed:")).pop() || "yt-dlp stream exited.";
