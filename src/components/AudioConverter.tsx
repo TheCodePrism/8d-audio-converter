@@ -10,6 +10,18 @@ import {
   Upload,
   Youtube,
   Music,
+  Headphones,
+  Sliders,
+  ListMusic,
+  Plus,
+  Play,
+  Pause,
+  Trash2,
+  Disc3,
+  Flame,
+  CheckCircle2,
+  Clock,
+  Radio,
 } from "lucide-react";
 import AudioPlayer from "./AudioPlayer";
 import UploadForm from "./UploadForm";
@@ -20,8 +32,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AudioProcessingOptions, YouTubeTrack } from "@/types";
 import {
   DEFAULT_OPTIONS,
+  PRESETS,
   process8DAudio,
   float32ToWav,
+  generateDemoAudioBuffer,
 } from "@/lib/audioProcessing";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
@@ -32,54 +46,41 @@ const SUPPORTED_FORMATS = [
   "audio/ogg",
   "audio/m4a",
   "audio/x-m4a",
+  "audio/flac",
 ];
-
-interface ConversionProgress {
-  status:
-    | "idle"
-    | "downloading"
-    | "reading"
-    | "decoding"
-    | "processing"
-    | "encoding"
-    | "complete";
-  percent: number;
-}
 
 interface AudioFileItem {
   id: string;
   name: string;
+  artist?: string;
+  thumbnail?: string;
   size?: number;
   file?: File;
   originalUrl: string;
   convertedUrl?: string;
   status: "pending" | "converting" | "complete" | "error";
+  progress?: number;
   error?: string;
-  sourceType: "upload" | "youtube";
+  sourceType: "upload" | "youtube" | "demo";
   rawBuffer?: AudioBuffer;
 }
 
 export default function AudioConverter() {
-  const [activeTab, setActiveTab] = useState<"upload" | "youtube">("upload");
+  const [activeStudioTab, setActiveStudioTab] = useState<"queue" | "add" | "settings">("add");
+  const [addMode, setAddMode] = useState<"upload" | "youtube">("upload");
+
   const [audioFiles, setAudioFiles] = useState<AudioFileItem[]>([]);
+  const [currentTrackIndex, setCurrentTrackIndex] = useState<number>(0);
   const [options, setOptions] = useState<AudioProcessingOptions>(DEFAULT_OPTIONS);
-  const [progress, setProgress] = useState<ConversionProgress>({
-    status: "idle",
-    percent: 0,
-  });
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [activePlaybackTime, setActivePlaybackTime] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
 
-  // Playback state tracking for orbit radar visualizer
-  const [playingFileIndex, setPlayingFileIndex] = useState<number | null>(null);
-  const [activePlaybackTime, setActivePlaybackTime] = useState<number>(0);
-
-  // Keep ref to all created object URLs to prevent memory leaks on unmount
   const createdUrlsRef = useRef<string[]>([]);
 
   useEffect(() => {
     const urls = createdUrlsRef.current;
     return () => {
-      // Cleanup all object URLs when component unmounts
       urls.forEach((url) => {
         try {
           URL.revokeObjectURL(url);
@@ -95,128 +96,79 @@ export default function AudioConverter() {
 
   const validateFile = (file: File): string | null => {
     if (file.size > MAX_FILE_SIZE) {
-      return `File size exceeds the ${MAX_FILE_SIZE / 1024 / 1024}MB limit`;
+      return `File size exceeds the ${MAX_FILE_SIZE / 1024 / 1024}MB limit.`;
     }
     const isSupported =
       SUPPORTED_FORMATS.includes(file.type) ||
-      file.name.match(/\.(mp3|wav|ogg|m4a)$/i);
+      file.name.match(/\.(mp3|wav|ogg|m4a|flac)$/i);
     if (!isSupported) {
-      return "Unsupported file format. Please upload MP3, WAV, or OGG files.";
+      return "Unsupported format. Please upload MP3, WAV, OGG, M4A, or FLAC.";
     }
     return null;
   };
 
-  // --- Local File Upload Handler ---
+  // --- 1. Local File Upload Handler ---
   const handleFileUpload = async (files: File[]) => {
     setError(null);
     const newItems: AudioFileItem[] = files.map((file) => ({
       id: `${file.name}-${Date.now()}-${Math.random()}`,
-      name: file.name,
+      name: file.name.replace(/\.[^/.]+$/, ""),
+      artist: "Local Audio File",
       size: file.size,
       file,
       originalUrl: registerUrl(URL.createObjectURL(file)),
       status: "pending",
+      progress: 0,
       sourceType: "upload",
     }));
 
-    setAudioFiles((prev) => [...prev, ...newItems]);
+    setAudioFiles((prev) => {
+      const updated = [...prev, ...newItems];
+      return updated;
+    });
 
-    for (let i = 0; i < newItems.length; i++) {
-      const item = newItems[i];
+    setActiveStudioTab("queue");
+
+    // Automatically convert first uploaded track
+    for (const item of newItems) {
       const validationError = validateFile(item.file!);
-
       if (validationError) {
         setAudioFiles((prev) =>
           prev.map((f) =>
-            f.id === item.id
-              ? { ...f, status: "error", error: validationError }
-              : f
+            f.id === item.id ? { ...f, status: "error", error: validationError } : f
           )
         );
         continue;
       }
-
-      await runLocalFileConversion(item);
+      await runConversion(item);
     }
   };
 
-  const runLocalFileConversion = async (item: AudioFileItem) => {
-    setAudioFiles((prev) =>
-      prev.map((f) =>
-        f.id === item.id ? { ...f, status: "converting", error: undefined } : f
-      )
-    );
-
-    let audioContext: AudioContext | null = null;
-
-    try {
-      setProgress({ status: "reading", percent: 15 });
-      const arrayBuffer = await item.file!.arrayBuffer();
-
-      setProgress({ status: "decoding", percent: 35 });
-      const AudioCtx =
-        window.AudioContext || (window as any).webkitAudioContext;
-      audioContext = new AudioCtx();
-      const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
-
-      setProgress({ status: "processing", percent: 65 });
-      const processedBuffer = await process8DAudio(decodedBuffer, options);
-
-      setProgress({ status: "encoding", percent: 88 });
-      const wavBlob = float32ToWav(processedBuffer);
-      const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
-
-      setAudioFiles((prev) =>
-        prev.map((f) =>
-          f.id === item.id
-            ? {
-                ...f,
-                convertedUrl,
-                status: "complete",
-                rawBuffer: decodedBuffer,
-              }
-            : f
-        )
-      );
-      setProgress({ status: "complete", percent: 100 });
-    } catch (err: any) {
-      console.error("Audio conversion failed:", err);
-      const msg =
-        err?.message ||
-        "Could not convert audio. Please ensure the file is a valid audio track.";
-      setAudioFiles((prev) =>
-        prev.map((f) =>
-          f.id === item.id ? { ...f, status: "error", error: msg } : f
-        )
-      );
-      setError(msg);
-    } finally {
-      if (audioContext && audioContext.state !== "closed") {
-        try {
-          await audioContext.close();
-        } catch {}
-      }
-    }
-  };
-
-  // --- YouTube Track Conversion Handler ---
+  // --- 2. YouTube Track Conversion Handler ---
   const handleConvertYouTubeTrack = async (track: YouTubeTrack) => {
     setError(null);
     const item: AudioFileItem = {
       id: `yt-${track.id}-${Date.now()}`,
-      name: `${track.title}.wav`,
+      name: track.title,
+      artist: track.author || "YouTube Music",
+      thumbnail: track.thumbnail,
       originalUrl: "",
       status: "converting",
+      progress: 10,
       sourceType: "youtube",
     };
 
-    setAudioFiles((prev) => [...prev, item]);
+    setAudioFiles((prev) => {
+      const updated = [...prev, item];
+      setCurrentTrackIndex(updated.length - 1);
+      return updated;
+    });
+
+    setActiveStudioTab("queue");
 
     let audioContext: AudioContext | null = null;
-
     try {
-      setProgress({ status: "downloading", percent: 15 });
-      // Fetch audio stream from backend yt-dlp API route
+      updateItemProgress(item.id, 25);
       const streamRes = await fetch(
         `/api/youtube/stream?url=${encodeURIComponent(track.url)}`
       );
@@ -226,21 +178,19 @@ export default function AudioConverter() {
         throw new Error(errJson?.error || "Failed to download YouTube audio stream.");
       }
 
-      setProgress({ status: "reading", percent: 35 });
+      updateItemProgress(item.id, 45);
       const audioBlob = await streamRes.blob();
       const originalUrl = registerUrl(URL.createObjectURL(audioBlob));
       const arrayBuffer = await audioBlob.arrayBuffer();
 
-      setProgress({ status: "decoding", percent: 55 });
-      const AudioCtx =
-        window.AudioContext || (window as any).webkitAudioContext;
+      updateItemProgress(item.id, 65);
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       audioContext = new AudioCtx();
       const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
-      setProgress({ status: "processing", percent: 75 });
+      updateItemProgress(item.id, 85);
       const processedBuffer = await process8DAudio(decodedBuffer, options);
 
-      setProgress({ status: "encoding", percent: 90 });
       const wavBlob = float32ToWav(processedBuffer);
       const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
 
@@ -252,13 +202,13 @@ export default function AudioConverter() {
                 originalUrl,
                 convertedUrl,
                 status: "complete",
+                progress: 100,
                 size: wavBlob.size,
                 rawBuffer: decodedBuffer,
               }
             : f
         )
       );
-      setProgress({ status: "complete", percent: 100 });
     } catch (err: any) {
       console.error("YouTube conversion error:", err);
       const msg = err?.message || "YouTube conversion failed.";
@@ -283,37 +233,145 @@ export default function AudioConverter() {
     }
   };
 
-  // --- Re-apply Settings with Cached Decoded Buffer ---
+  // --- 3. Instant Demo Track Synthesizer ---
+  const handleLoadDemoTrack = async () => {
+    setError(null);
+    const demoId = `demo-${Date.now()}`;
+    const item: AudioFileItem = {
+      id: demoId,
+      name: "Starlight Neon Dreams (8D Demo)",
+      artist: "8D Spatial Synthesizer",
+      originalUrl: "",
+      status: "converting",
+      progress: 20,
+      sourceType: "demo",
+    };
+
+    setAudioFiles((prev) => {
+      const updated = [...prev, item];
+      setCurrentTrackIndex(updated.length - 1);
+      return updated;
+    });
+
+    setActiveStudioTab("queue");
+
+    try {
+      updateItemProgress(demoId, 40);
+      const rawBuffer = generateDemoAudioBuffer(44100, 16);
+      const rawWavBlob = float32ToWav(rawBuffer);
+      const originalUrl = registerUrl(URL.createObjectURL(rawWavBlob));
+
+      updateItemProgress(demoId, 75);
+      const processedBuffer = await process8DAudio(rawBuffer, options);
+      const convertedWavBlob = float32ToWav(processedBuffer);
+      const convertedUrl = registerUrl(URL.createObjectURL(convertedWavBlob));
+
+      setAudioFiles((prev) =>
+        prev.map((f) =>
+          f.id === demoId
+            ? {
+                ...f,
+                originalUrl,
+                convertedUrl,
+                status: "complete",
+                progress: 100,
+                size: convertedWavBlob.size,
+                rawBuffer,
+              }
+            : f
+        )
+      );
+    } catch (err: any) {
+      console.error("Demo synthesis error:", err);
+      setError("Could not synthesize demo audio.");
+    }
+  };
+
+  // Helper to run local file conversion
+  const runConversion = async (item: AudioFileItem) => {
+    setAudioFiles((prev) =>
+      prev.map((f) =>
+        f.id === item.id ? { ...f, status: "converting", progress: 20 } : f
+      )
+    );
+
+    let audioContext: AudioContext | null = null;
+    try {
+      const arrayBuffer = await item.file!.arrayBuffer();
+      updateItemProgress(item.id, 45);
+
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      audioContext = new AudioCtx();
+      const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+      updateItemProgress(item.id, 70);
+      const processedBuffer = await process8DAudio(decodedBuffer, options);
+
+      updateItemProgress(item.id, 90);
+      const wavBlob = float32ToWav(processedBuffer);
+      const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
+
+      setAudioFiles((prev) =>
+        prev.map((f) =>
+          f.id === item.id
+            ? {
+                ...f,
+                convertedUrl,
+                status: "complete",
+                progress: 100,
+                rawBuffer: decodedBuffer,
+              }
+            : f
+        )
+      );
+    } catch (err: any) {
+      console.error("Conversion error:", err);
+      const msg = err?.message || "Audio conversion failed.";
+      setAudioFiles((prev) =>
+        prev.map((f) =>
+          f.id === item.id ? { ...f, status: "error", error: msg } : f
+        )
+      );
+      setError(msg);
+    } finally {
+      if (audioContext && audioContext.state !== "closed") {
+        try {
+          await audioContext.close();
+        } catch {}
+      }
+    }
+  };
+
+  const updateItemProgress = (id: string, percent: number) => {
+    setAudioFiles((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, progress: percent } : f))
+    );
+  };
+
+  // Re-convert a specific track (e.g. after changing 8D parameters)
   const handleReconvert = async (index: number) => {
     const target = audioFiles[index];
     if (!target) return;
 
-    if (target.convertedUrl) {
-      try {
-        URL.revokeObjectURL(target.convertedUrl);
-      } catch {}
-    }
-
-    // If we have cached rawBuffer, we can re-render instantly without re-downloading!
     if (target.rawBuffer) {
       setAudioFiles((prev) =>
-        prev.map((f, i) => (i === index ? { ...f, status: "converting" } : f))
+        prev.map((f, i) =>
+          i === index ? { ...f, status: "converting", progress: 30 } : f
+        )
       );
 
       try {
-        setProgress({ status: "processing", percent: 50 });
         const processedBuffer = await process8DAudio(target.rawBuffer, options);
-
-        setProgress({ status: "encoding", percent: 90 });
         const wavBlob = float32ToWav(processedBuffer);
         const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
 
         setAudioFiles((prev) =>
           prev.map((f, i) =>
-            i === index ? { ...f, convertedUrl, status: "complete" } : f
+            i === index
+              ? { ...f, convertedUrl, status: "complete", progress: 100 }
+              : f
           )
         );
-        setProgress({ status: "complete", percent: 100 });
       } catch (err: any) {
         setAudioFiles((prev) =>
           prev.map((f, i) =>
@@ -322,16 +380,16 @@ export default function AudioConverter() {
         );
       }
     } else if (target.file) {
-      await runLocalFileConversion(target);
+      await runConversion(target);
     }
   };
 
-  const handleDownload = (convertedUrl: string, originalFileName: string) => {
+  const handleDownload = (convertedUrl: string, title: string) => {
     try {
       const link = document.createElement("a");
       link.href = convertedUrl;
-      const baseName = originalFileName.replace(/\.[^/.]+$/, "");
-      link.download = `${baseName}_8D.wav`;
+      const cleanTitle = title.replace(/[^a-zA-Z0-9_-]/g, "_");
+      link.download = `${cleanTitle}_8D_Spatial.wav`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -341,7 +399,7 @@ export default function AudioConverter() {
     }
   };
 
-  const removeFile = (index: number) => {
+  const removeTrack = (index: number) => {
     setAudioFiles((prev) => {
       const target = prev[index];
       if (target) {
@@ -350,266 +408,455 @@ export default function AudioConverter() {
       }
       return prev.filter((_, i) => i !== index);
     });
-    if (playingFileIndex === index) {
-      setPlayingFileIndex(null);
+
+    if (currentTrackIndex >= index && currentTrackIndex > 0) {
+      setCurrentTrackIndex((prev) => prev - 1);
     }
   };
 
+  const activeTrack = audioFiles[currentTrackIndex] || null;
   const isConvertingAny = audioFiles.some((f) => f.status === "converting");
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl border border-slate-100 p-6 sm:p-8 max-w-4xl mx-auto space-y-6">
-      {/* Settings & Presets Drawer */}
-      <AudioSettings
-        options={options}
-        onChange={setOptions}
-        disabled={isConvertingAny}
-      />
-
+    <div className="space-y-6">
+      {/* Global Error Banner */}
       {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-5 w-5" />
+        <Alert variant="destructive" className="bg-red-950/80 border-red-800 text-red-200">
+          <AlertCircle className="w-4 h-4 text-red-400" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
-      {/* Input Source Tabs */}
-      <div className="border-b border-slate-200">
-        <div className="flex gap-4">
-          <button
-            type="button"
-            onClick={() => setActiveTab("upload")}
-            className={`pb-3 px-2 text-sm font-semibold flex items-center gap-2 border-b-2 transition-all ${
-              activeTab === "upload"
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            <Upload className="w-4 h-4" />
-            <span>Local File Upload</span>
-          </button>
+      {/* Main Music Studio Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* ========================================================= */}
+        {/* LEFT COLUMN: THE 8D SPATIAL PLAYER & RADAR DECK (6 COLS)  */}
+        {/* ========================================================= */}
+        <div className="lg:col-span-6 space-y-5">
+          {/* Deck Container */}
+          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+            {/* Top Tag & Spatial Status */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-4">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                <span className="text-xs font-mono font-bold tracking-wider text-slate-300 uppercase">
+                  360° HRTF Binaural Deck
+                </span>
+              </div>
+              <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+                {activeTrack?.status === "complete" ? "8D ACTIVE" : "STUDIO ENGINE"}
+              </span>
+            </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("youtube")}
-            className={`pb-3 px-2 text-sm font-semibold flex items-center gap-2 border-b-2 transition-all ${
-              activeTab === "youtube"
-                ? "border-red-600 text-red-600"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            <Youtube className="w-4 h-4" />
-            <span>YouTube URL / Playlist (yt-dlp)</span>
-          </button>
+            {/* Orbit Radar HUD & Visualizer */}
+            <div className="mb-5 flex justify-center">
+              <OrbitVisualizer
+                isPlaying={isPlaying}
+                options={options}
+                currentTime={activePlaybackTime}
+              />
+            </div>
+
+            {/* Audio Player Transport & Controls */}
+            {activeTrack ? (
+              <AudioPlayer
+                src={activeTrack.convertedUrl || activeTrack.originalUrl}
+                originalSrc={activeTrack.originalUrl}
+                title={activeTrack.name}
+                artist={activeTrack.artist || "8D Audio Converter"}
+                thumbnail={activeTrack.thumbnail}
+                is8DReady={!!activeTrack.convertedUrl}
+                onTimeUpdate={setActivePlaybackTime}
+                onPlayStateChange={setIsPlaying}
+                onNext={() => {
+                  if (currentTrackIndex < audioFiles.length - 1) {
+                    setCurrentTrackIndex((prev) => prev + 1);
+                  }
+                }}
+                onPrev={() => {
+                  if (currentTrackIndex > 0) {
+                    setCurrentTrackIndex((prev) => prev - 1);
+                  }
+                }}
+              />
+            ) : (
+              /* Idle Deck State */
+              <div className="p-8 text-center bg-slate-950/60 border border-slate-800 rounded-2xl space-y-3">
+                <div className="w-14 h-14 mx-auto rounded-full bg-slate-900 flex items-center justify-center text-slate-500 border border-slate-800">
+                  <Disc3 className="w-8 h-8 animate-spin" style={{ animationDuration: "12s" }} />
+                </div>
+                <h4 className="text-sm font-semibold text-slate-200">
+                  No Track Loaded in Deck
+                </h4>
+                <p className="text-xs text-slate-400 max-w-xs mx-auto">
+                  Add music from the studio tabs on the right, or try the instant demo track.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleLoadDemoTrack}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-cyan-500/20 transition-all"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Load Demo Track Now</span>
+                </button>
+              </div>
+            )}
+
+            {/* Quick 8D Preset Pills */}
+            <div className="mt-4 pt-3 border-t border-slate-800/80">
+              <span className="block text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-2">
+                Quick 8D Presets:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {PRESETS.map((p) => {
+                  const isCurrent = options.rotationSpeed === p.options.rotationSpeed;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setOptions(p.options)}
+                      className={`text-xs px-2.5 py-1 rounded-lg border transition-all ${
+                        isCurrent
+                          ? "bg-cyan-500/20 border-cyan-400 text-cyan-200"
+                          : "bg-slate-950/40 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
+                      }`}
+                    >
+                      {p.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* Active Tab View */}
-      {activeTab === "upload" ? (
-        <UploadForm
-          onUpload={handleFileUpload}
-          isConverting={isConvertingAny}
-          maxFileSize={MAX_FILE_SIZE}
-          supportedFormats={SUPPORTED_FORMATS}
-        />
-      ) : (
-        <YouTubeInput
-          onConvertTrack={handleConvertYouTubeTrack}
-          onConvertBatch={handleConvertYouTubeBatch}
-          isConverting={isConvertingAny}
-        />
-      )}
-
-      {/* Converted Files List & Visualizers */}
-      {audioFiles.length > 0 && (
-        <div className="space-y-8 pt-4 border-t border-slate-200">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
-              <Music className="w-4 h-4 text-blue-600" />
-              <span>Converted Tracks Queue ({audioFiles.length})</span>
-            </h3>
+        {/* ========================================================= */}
+        {/* RIGHT COLUMN: QUEUE, ADD MUSIC & 8D STUDIO TABS (6 COLS)  */}
+        {/* ========================================================= */}
+        <div className="lg:col-span-6 space-y-4">
+          {/* Studio Tab Switcher */}
+          <div className="flex items-center justify-between p-1.5 bg-slate-900/90 border border-slate-800 rounded-2xl">
             <button
               type="button"
-              onClick={() => setAudioFiles([])}
-              className="text-xs text-slate-500 hover:text-red-600 transition-colors"
+              onClick={() => setActiveStudioTab("queue")}
+              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+                activeStudioTab === "queue"
+                  ? "bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
             >
-              Clear All
+              <ListMusic className="w-4 h-4" />
+              <span>Playlist Queue</span>
+              {audioFiles.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-mono">
+                  {audioFiles.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveStudioTab("add")}
+              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+                activeStudioTab === "add"
+                  ? "bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Music</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveStudioTab("settings")}
+              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+                activeStudioTab === "settings"
+                  ? "bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Sliders className="w-4 h-4" />
+              <span>8D Tuning</span>
             </button>
           </div>
 
-          {audioFiles.map((item, index) => {
-            const isThisPlaying = playingFileIndex === index;
-
-            return (
-              <div
-                key={item.id}
-                className="bg-slate-50 border border-slate-200 rounded-2xl p-5 sm:p-6 relative transition-all shadow-sm"
-              >
-                {/* Remove File Button */}
-                <button
-                  type="button"
-                  onClick={() => removeFile(index)}
-                  className="absolute top-4 right-4 p-1.5 hover:bg-slate-200 rounded-full text-slate-400 hover:text-slate-700 transition-colors"
-                  title="Remove track"
-                  aria-label="Remove track"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-
-                {/* Track Title, Source Tag & Size */}
-                <div className="mb-5 pr-8">
-                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <h4 className="font-bold text-slate-800 text-lg line-clamp-1">
-                      {item.name}
-                    </h4>
-                    {item.sourceType === "youtube" ? (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-red-100 text-red-700 flex items-center gap-1">
-                        <Youtube className="w-3 h-3" />
-                        YouTube
-                      </span>
-                    ) : (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-100 text-blue-700 flex items-center gap-1">
-                        <Upload className="w-3 h-3" />
-                        File
-                      </span>
-                    )}
-                    {item.status === "complete" && (
-                      <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 flex items-center gap-1">
-                        <Sparkles className="w-3 h-3" />
-                        8D Ready
-                      </span>
-                    )}
-                  </div>
-                  {item.size && (
-                    <p className="text-xs text-slate-500 font-mono">
-                      {(item.size / (1024 * 1024)).toFixed(2)} MB
-                    </p>
+          {/* TAB 1: PLAYLIST / QUEUE */}
+          {activeStudioTab === "queue" && (
+            <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-xl backdrop-blur-xl space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-semibold text-slate-100">
+                    Track Queue ({audioFiles.length})
+                  </h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleLoadDemoTrack}
+                    className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1 font-medium"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>+ Demo Song</span>
+                  </button>
+                  {audioFiles.length > 0 && (
+                    <>
+                      <span className="text-slate-700">•</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAudioFiles([]);
+                          setCurrentTrackIndex(0);
+                        }}
+                        className="text-xs text-slate-500 hover:text-red-400 transition-colors"
+                      >
+                        Clear All
+                      </button>
+                    </>
                   )}
                 </div>
-
-                {/* Progress Bar */}
-                {item.status === "converting" && (
-                  <div className="mb-6 p-4 bg-white rounded-xl border border-blue-100 shadow-sm space-y-2">
-                    <div className="flex justify-between text-xs font-medium text-slate-600">
-                      <span className="capitalize">
-                        {progress.status === "downloading" &&
-                          "Downloading audio stream from YouTube via yt-dlp..."}
-                        {progress.status === "reading" &&
-                          "Reading audio buffer..."}
-                        {progress.status === "decoding" &&
-                          "Decoding waveform into Web Audio API..."}
-                        {progress.status === "processing" &&
-                          "Applying 360° HRTF binaural rotation & spatial reverb..."}
-                        {progress.status === "encoding" &&
-                          "Encoding 16-bit PCM stereo WAV..."}
-                        {progress.status === "complete" && "Completed!"}
-                      </span>
-                      <span className="font-mono text-blue-600 font-bold">
-                        {progress.percent}%
-                      </span>
-                    </div>
-                    <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-blue-600 to-indigo-600 transition-all duration-300 rounded-full"
-                        style={{ width: `${progress.percent}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Error Banner */}
-                {item.status === "error" && (
-                  <Alert variant="destructive" className="mb-4">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>{item.error}</AlertDescription>
-                  </Alert>
-                )}
-
-                {/* Interactive 3D Visualizer & 8D Audio Player */}
-                {item.status === "complete" && item.convertedUrl && (
-                  <div className="space-y-6">
-                    {/* 3D Orbit Radar */}
-                    <div className="flex justify-center">
-                      <OrbitVisualizer
-                        isPlaying={isThisPlaying}
-                        options={options}
-                        currentTime={activePlaybackTime}
-                      />
-                    </div>
-
-                    {/* 8D Converted Player & Download */}
-                    <div className="space-y-2">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-slate-800">
-                            🎧 8D Spatial Audio
-                          </span>
-                          <span className="text-xs text-blue-600 font-medium">
-                            (Wear headphones for 360° effect)
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleReconvert(index)}
-                            title="Re-apply updated settings"
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition-colors"
-                          >
-                            <RefreshCw className="h-3.5 w-3.5" />
-                            <span>Re-apply Settings</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleDownload(item.convertedUrl!, item.name)
-                            }
-                            className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm hover:shadow transition-all"
-                          >
-                            <Download className="h-4 w-4" />
-                            <span>Download 8D WAV</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      <AudioPlayer
-                        src={item.convertedUrl}
-                        title="Converted 8D Track"
-                        onPlayStateChange={(playing) => {
-                          if (playing) {
-                            setPlayingFileIndex(index);
-                          } else if (playingFileIndex === index) {
-                            setPlayingFileIndex(null);
-                          }
-                        }}
-                        onTimeUpdate={(t) => {
-                          if (playingFileIndex === index) {
-                            setActivePlaybackTime(t);
-                          }
-                        }}
-                      />
-                    </div>
-
-                    {/* Original Track Preview (A/B Comparison) */}
-                    {item.originalUrl && (
-                      <div className="pt-2 border-t border-slate-200/80">
-                        <span className="text-xs font-medium text-slate-500 mb-2 block">
-                          Original Flat Audio (A/B Comparison)
-                        </span>
-                        <AudioPlayer
-                          src={item.originalUrl}
-                          title="Original Audio"
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
-            );
-          })}
+
+              {audioFiles.length === 0 ? (
+                <div className="p-8 text-center space-y-3">
+                  <Music className="w-10 h-10 text-slate-600 mx-auto" />
+                  <p className="text-xs text-slate-400">
+                    Your queue is currently empty.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveStudioTab("add")}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition-all"
+                  >
+                    + Add Tracks Now
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1 custom-scrollbar">
+                  {audioFiles.map((item, index) => {
+                    const isCurrent = currentTrackIndex === index;
+                    return (
+                      <div
+                        key={item.id}
+                        className={`p-3.5 rounded-2xl border transition-all ${
+                          isCurrent
+                            ? "bg-slate-950 border-cyan-500/60 shadow-lg shadow-cyan-500/5 ring-1 ring-cyan-500/30"
+                            : "bg-slate-950/50 border-slate-800/80 hover:border-slate-700"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          {/* Play / Select in Deck */}
+                          <button
+                            type="button"
+                            onClick={() => setCurrentTrackIndex(index)}
+                            className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${
+                              isCurrent && isPlaying
+                                ? "bg-cyan-500 text-slate-950 font-bold"
+                                : "bg-slate-800 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-400"
+                            }`}
+                            title="Load in deck"
+                          >
+                            {isCurrent && isPlaying ? (
+                              <Pause className="w-4 h-4 fill-current" />
+                            ) : (
+                              <Play className="w-4 h-4 fill-current ml-0.5" />
+                            )}
+                          </button>
+
+                          {/* Track Info */}
+                          <div
+                            className="flex-1 min-w-0 cursor-pointer"
+                            onClick={() => setCurrentTrackIndex(index)}
+                          >
+                            <h4 className="text-xs md:text-sm font-semibold text-slate-100 truncate">
+                              {item.name}
+                            </h4>
+                            <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+                              <span className="truncate">{item.artist || "Audio"}</span>
+                              <span className="text-slate-600">•</span>
+                              {item.status === "complete" && (
+                                <span className="text-emerald-400 font-mono font-semibold flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  8D Ready
+                                </span>
+                              )}
+                              {item.status === "converting" && (
+                                <span className="text-cyan-400 font-mono animate-pulse">
+                                  Converting {item.progress || 0}%
+                                </span>
+                              )}
+                              {item.status === "pending" && (
+                                <span className="text-amber-400 font-mono">
+                                  Pending
+                                </span>
+                              )}
+                              {item.status === "error" && (
+                                <span className="text-red-400 font-mono">
+                                  Error
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {item.status === "complete" && item.convertedUrl && (
+                              <button
+                                type="button"
+                                onClick={() => handleDownload(item.convertedUrl!, item.name)}
+                                className="p-2 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 transition-all"
+                                title="Download 8D Master (WAV)"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            {item.status === "complete" && (
+                              <button
+                                type="button"
+                                onClick={() => handleReconvert(index)}
+                                className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition-all"
+                                title="Re-convert with current 8D settings"
+                              >
+                                <RefreshCw className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            {item.status === "pending" && (
+                              <button
+                                type="button"
+                                onClick={() => handleReconvert(index)}
+                                className="px-2.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-semibold transition-all flex items-center gap-1"
+                              >
+                                <Sparkles className="w-3 h-3" />
+                                <span>Convert</span>
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => removeTrack(index)}
+                              className="p-2 rounded-lg bg-slate-900 hover:bg-red-950/60 text-slate-500 hover:text-red-400 transition-all"
+                              title="Remove track"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Progress Bar for Converting Tracks */}
+                        {item.status === "converting" && (
+                          <div className="mt-2.5 pt-2 border-t border-slate-900">
+                            <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
+                              <div
+                                className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 h-1.5 transition-all duration-300"
+                                style={{ width: `${item.progress || 20}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 2: ADD MUSIC */}
+          {activeStudioTab === "add" && (
+            <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-xl backdrop-blur-xl space-y-4">
+              {/* Sub Mode Toggle: File Upload vs YouTube */}
+              <div className="flex gap-2 p-1 bg-slate-950/70 border border-slate-800 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setAddMode("upload")}
+                  className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+                    addMode === "upload"
+                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload Files</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAddMode("youtube")}
+                  className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+                    addMode === "youtube"
+                      ? "bg-red-500/20 text-red-300 border border-red-500/30"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <Youtube className="w-3.5 h-3.5 text-red-400" />
+                  <span>YouTube URL / Playlist</span>
+                </button>
+              </div>
+
+              {/* View according to submode */}
+              {addMode === "upload" ? (
+                <UploadForm
+                  onUpload={handleFileUpload}
+                  isConverting={isConvertingAny}
+                  maxFileSize={MAX_FILE_SIZE}
+                  supportedFormats={SUPPORTED_FORMATS}
+                />
+              ) : (
+                <YouTubeInput
+                  onConvertTrack={handleConvertYouTubeTrack}
+                  onConvertBatch={handleConvertYouTubeBatch}
+                  isConverting={isConvertingAny}
+                />
+              )}
+
+              {/* Instant Demo Song Callout */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950/30 via-slate-950/50 to-cyan-950/30 border border-slate-800 flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <h4 className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>No audio file handy?</span>
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    Instantly synthesize a chill ambient 8D track directly in your browser.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleLoadDemoTrack}
+                  disabled={isConvertingAny}
+                  className="px-3.5 py-2 bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white text-xs font-semibold rounded-xl shadow-md shadow-cyan-500/10 transition-all flex-shrink-0"
+                >
+                  Try Demo Song
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: 8D TUNING STUDIO */}
+          {activeStudioTab === "settings" && (
+            <div className="space-y-4">
+              <AudioSettings
+                options={options}
+                onChange={setOptions}
+                disabled={isConvertingAny}
+              />
+
+              {activeTrack && (
+                <button
+                  type="button"
+                  onClick={() => handleReconvert(currentTrackIndex)}
+                  disabled={isConvertingAny}
+                  className="w-full py-3 px-4 bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 disabled:opacity-40 text-white text-xs font-semibold rounded-2xl shadow-lg shadow-cyan-500/20 transition-all flex items-center justify-center gap-2"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>Re-render Current Track with These Settings</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

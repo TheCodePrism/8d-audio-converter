@@ -277,3 +277,78 @@ export function float32ToWav(audioBuffer: AudioBuffer): Blob {
   return new Blob([view], { type: "audio/wav" });
 }
 
+/**
+ * Synthesizes a demo ambient synthwave track directly in the browser
+ * so users can test 8D audio immediately without uploading a file.
+ */
+export function generateDemoAudioBuffer(sampleRate = 44100, duration = 16): AudioBuffer {
+  // Use OfflineAudioContext to synthesize a rich stereo track
+  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({
+    sampleRate,
+  });
+  const numSamples = Math.floor(sampleRate * duration);
+  const buffer = ctx.createBuffer(2, numSamples, sampleRate);
+  const left = buffer.getChannelData(0);
+  const right = buffer.getChannelData(1);
+
+  // Chord progression frequencies (Hz): Cmaj7, Am7, Fmaj7, G6
+  const chords = [
+    [261.63, 329.63, 392.00, 493.88], // C, E, G, B
+    [220.00, 261.63, 329.63, 392.00], // A, C, E, G
+    [174.61, 220.00, 261.63, 329.63], // F, A, C, E
+    [196.00, 246.94, 293.66, 392.00], // G, B, D, G
+  ];
+  const bassNotes = [130.81, 110.00, 87.31, 98.00];
+
+  const chordDuration = duration / chords.length;
+
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / sampleRate;
+    const chordIndex = Math.min(chords.length - 1, Math.floor(t / chordDuration));
+    const chordTime = t % chordDuration;
+    const chord = chords[chordIndex];
+    const bass = bassNotes[chordIndex];
+
+    // Envelope for chords
+    const chordEnv = Math.min(1, chordTime * 3) * Math.exp(-chordTime * 0.4);
+
+    // Warm bass tone
+    const bassTone = Math.sin(2 * Math.PI * bass * t) * 0.25 * (1 + 0.5 * Math.sin(2 * Math.PI * (bass * 0.5) * t));
+
+    // Pad chords with subtle detune
+    let padL = 0;
+    let padR = 0;
+    for (let c = 0; c < chord.length; c++) {
+      const freq = chord[c];
+      const osc1 = Math.sin(2 * Math.PI * freq * t);
+      const osc2 = Math.sin(2 * Math.PI * (freq * 1.003) * t);
+      padL += osc1 * 0.08 * chordEnv;
+      padR += osc2 * 0.08 * chordEnv;
+    }
+
+    // Gentle arpeggio pulse
+    const arpRate = 4; // 4 notes per second
+    const arpIndex = Math.floor(t * arpRate) % chord.length;
+    const arpFreq = chord[arpIndex] * 2;
+    const arpTime = (t * arpRate) % 1;
+    const arpEnv = Math.exp(-arpTime * 8);
+    const arpValue = Math.sin(2 * Math.PI * arpFreq * t) * 0.12 * arpEnv;
+    const arpPan = Math.sin(2 * Math.PI * 0.5 * t); // sweeps L/R
+
+    // Mix stereo channels
+    left[i] = padL + bassTone * 0.5 + arpValue * (0.5 - arpPan * 0.4);
+    right[i] = padR + bassTone * 0.5 + arpValue * (0.5 + arpPan * 0.4);
+
+    // Overall fade in and fade out
+    const fadeIn = Math.min(1, t / 1.5);
+    const fadeOut = Math.min(1, (duration - t) / 2.0);
+    const masterEnv = fadeIn * fadeOut;
+
+    left[i] *= masterEnv;
+    right[i] *= masterEnv;
+  }
+
+  return buffer;
+}
+
+

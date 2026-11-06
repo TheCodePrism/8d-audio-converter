@@ -13,6 +13,7 @@ import {
   Clock,
   Sparkles,
   AlertCircle,
+  Plus,
 } from "lucide-react";
 import { YouTubeInfoResponse, YouTubeTrack } from "@/types";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -65,7 +66,6 @@ export default function YouTubeInput({
       }
 
       setInfo(data);
-      // Select all tracks by default for playlists
       if (data.tracks && data.tracks.length > 0) {
         setSelectedTrackIds(new Set(data.tracks.map((t: YouTubeTrack) => t.id)));
       }
@@ -115,25 +115,25 @@ export default function YouTubeInput({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Search Input Bar */}
       <form onSubmit={handleFetchInfo} className="space-y-2">
         <div className="relative flex items-center">
-          <div className="absolute left-4 text-red-600 pointer-events-none">
+          <div className="absolute left-4 text-red-500 pointer-events-none">
             <Youtube className="w-5 h-5" />
           </div>
           <input
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="Paste YouTube Video or Playlist link (e.g., https://youtube.com/watch?v=...)"
+            placeholder="Paste YouTube Video or Playlist URL (e.g., https://youtube.com/watch?v=...)"
             disabled={isLoading || isConverting}
-            className="w-full pl-12 pr-28 py-3.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white transition-all text-slate-800 placeholder-slate-400"
+            className="w-full pl-12 pr-28 py-3.5 bg-slate-950/60 border border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500 transition-all text-slate-100 placeholder-slate-500"
           />
           <button
             type="submit"
             disabled={isLoading || !url.trim() || isConverting}
-            className="absolute right-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-slate-300 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+            className="absolute right-2 px-4 py-2 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-md shadow-red-500/20"
           >
             {isLoading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -143,34 +143,34 @@ export default function YouTubeInput({
             <span>{isLoading ? "Fetching..." : "Fetch"}</span>
           </button>
         </div>
-        <p className="text-[11px] text-slate-500 pl-1">
-          Supports single videos, official music tracks, and full playlists via yt-dlp.
+        <p className="text-[11px] text-slate-400 pl-1">
+          Paste any YouTube song or playlist. The audio stream is securely proxied and converted into 8D spatial sound.
         </p>
       </form>
 
       {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="w-4 h-4" />
+        <Alert variant="destructive" className="bg-red-950/50 border-red-800/80 text-red-200">
+          <AlertCircle className="w-4 h-4 text-red-400" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
       {/* Results Preview */}
       {info && (
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-            <div className="flex items-center gap-2">
+        <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+            <div className="flex items-center gap-2 min-w-0">
               {info.isPlaylist ? (
-                <ListMusic className="w-5 h-5 text-red-600" />
+                <ListMusic className="w-5 h-5 text-red-500 flex-shrink-0" />
               ) : (
-                <Youtube className="w-5 h-5 text-red-600" />
+                <Youtube className="w-5 h-5 text-red-500 flex-shrink-0" />
               )}
-              <h3 className="font-bold text-slate-800 text-sm sm:text-base line-clamp-1">
+              <h3 className="font-semibold text-slate-100 text-sm sm:text-base truncate">
                 {info.title}
               </h3>
             </div>
             {info.isPlaylist && (
-              <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-red-100 text-red-700">
+              <span className="text-xs font-mono font-semibold px-2.5 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/30">
                 {info.tracks.length} Tracks
               </span>
             )}
@@ -178,20 +178,20 @@ export default function YouTubeInput({
 
           {/* Single Video Card */}
           {!info.isPlaylist && info.tracks.length > 0 && (
-            <div className="flex flex-col sm:flex-row items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div className="flex flex-col sm:flex-row items-center gap-4 bg-slate-900/80 p-4 rounded-xl border border-slate-800 shadow-md">
               {info.tracks[0].thumbnail && (
                 <img
                   src={info.tracks[0].thumbnail}
                   alt={info.tracks[0].title}
-                  className="w-full sm:w-36 h-24 object-cover rounded-lg shadow-sm"
+                  className="w-full sm:w-36 h-24 object-cover rounded-lg shadow-inner"
                 />
               )}
               <div className="flex-1 min-w-0 space-y-1">
-                <h4 className="font-semibold text-slate-800 text-sm line-clamp-2">
+                <h4 className="font-semibold text-slate-100 text-sm line-clamp-2">
                   {info.tracks[0].title}
                 </h4>
                 {info.tracks[0].author && (
-                  <p className="text-xs text-slate-500">{info.tracks[0].author}</p>
+                  <p className="text-xs text-slate-400">{info.tracks[0].author}</p>
                 )}
                 {info.tracks[0].duration && (
                   <span className="inline-flex items-center gap-1 text-[11px] font-mono text-slate-400">
@@ -204,14 +204,14 @@ export default function YouTubeInput({
                 type="button"
                 disabled={isConverting}
                 onClick={() => handleConvertSingle(info.tracks[0])}
-                className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition-all shrink-0"
+                className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-red-600 via-rose-600 to-purple-600 hover:from-red-500 hover:to-purple-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-lg shadow-red-500/20 flex items-center justify-center gap-2 transition-all shrink-0"
               >
                 {isConverting ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Sparkles className="w-4 h-4" />
                 )}
-                <span>Convert to 8D Audio</span>
+                <span>Import & Convert 8D</span>
               </button>
             </div>
           )}
@@ -219,16 +219,16 @@ export default function YouTubeInput({
           {/* Playlist Track Selection List */}
           {info.isPlaylist && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between text-xs font-medium text-slate-600 px-1">
+              <div className="flex items-center justify-between text-xs font-medium text-slate-400 px-1">
                 <button
                   type="button"
                   onClick={toggleSelectAll}
-                  className="flex items-center gap-1.5 hover:text-slate-900"
+                  className="flex items-center gap-1.5 hover:text-white transition-colors"
                 >
                   {selectedTrackIds.size === info.tracks.length ? (
-                    <CheckSquare className="w-4 h-4 text-red-600" />
+                    <CheckSquare className="w-4 h-4 text-red-500" />
                   ) : (
-                    <Square className="w-4 h-4 text-slate-400" />
+                    <Square className="w-4 h-4 text-slate-600" />
                   )}
                   <span>
                     Select All ({selectedTrackIds.size}/{info.tracks.length})
@@ -239,27 +239,26 @@ export default function YouTubeInput({
                   type="button"
                   disabled={selectedTrackIds.size === 0 || isConverting}
                   onClick={handleConvertSelected}
-                  className="px-4 py-2 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 disabled:opacity-40 text-white text-xs font-semibold rounded-lg shadow-sm flex items-center gap-1.5 transition-all"
+                  className="px-4 py-2 bg-gradient-to-r from-red-600 to-purple-600 hover:from-red-500 hover:to-purple-500 disabled:opacity-40 text-white text-xs font-semibold rounded-xl shadow-md flex items-center gap-1.5 transition-all"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>
-                    Convert {selectedTrackIds.size} Selected Track
-                    {selectedTrackIds.size > 1 ? "s" : ""}
+                    Import & Convert ({selectedTrackIds.size})
                   </span>
                 </button>
               </div>
 
-              <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+              <div className="max-h-72 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                 {info.tracks.map((track, idx) => {
                   const isSelected = selectedTrackIds.has(track.id);
                   return (
                     <div
                       key={track.id}
                       onClick={() => toggleSelectTrack(track.id)}
-                      className={`flex items-center gap-3 p-2.5 rounded-lg border text-left cursor-pointer transition-all ${
+                      className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-all ${
                         isSelected
-                          ? "bg-white border-red-300 shadow-sm"
-                          : "bg-slate-100/60 border-transparent hover:bg-white"
+                          ? "bg-slate-900 border-red-500/50 shadow-sm"
+                          : "bg-slate-950/40 border-slate-800/80 hover:border-slate-700"
                       }`}
                     >
                       <button
@@ -268,29 +267,29 @@ export default function YouTubeInput({
                           e.stopPropagation();
                           toggleSelectTrack(track.id);
                         }}
-                        className="text-red-600"
+                        className="text-slate-400 hover:text-white"
                       >
                         {isSelected ? (
-                          <CheckSquare className="w-4 h-4" />
+                          <CheckSquare className="w-4 h-4 text-red-500" />
                         ) : (
-                          <Square className="w-4 h-4 text-slate-400" />
+                          <Square className="w-4 h-4 text-slate-600" />
                         )}
                       </button>
 
-                      <span className="text-xs font-mono text-slate-400 w-5">
-                        {idx + 1}.
+                      <span className="text-xs font-mono text-slate-500 w-5 text-right">
+                        {idx + 1}
                       </span>
 
                       {track.thumbnail && (
                         <img
                           src={track.thumbnail}
-                          alt=""
-                          className="w-12 h-8 object-cover rounded shrink-0"
+                          alt={track.title}
+                          className="w-12 h-9 object-cover rounded shadow-sm flex-shrink-0"
                         />
                       )}
 
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-slate-800 truncate">
+                        <p className="text-xs font-medium text-slate-200 truncate">
                           {track.title}
                         </p>
                         {track.author && (
@@ -301,10 +300,23 @@ export default function YouTubeInput({
                       </div>
 
                       {track.duration && (
-                        <span className="text-[11px] font-mono text-slate-400 shrink-0">
+                        <span className="text-[11px] font-mono text-slate-400 flex-shrink-0">
                           {formatDuration(track.duration)}
                         </span>
                       )}
+
+                      <button
+                        type="button"
+                        disabled={isConverting}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleConvertSingle(track);
+                        }}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-red-600/20 hover:text-red-400 text-slate-400 transition-colors"
+                        title="Convert this single track"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   );
                 })}

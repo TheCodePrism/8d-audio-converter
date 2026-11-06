@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useState, useRef } from 'react';
-import { Upload, Loader2, File } from 'lucide-react';
+import { useState, useRef } from "react";
+import { Upload, Loader2, Music, Sparkles } from "lucide-react";
 
 interface UploadFormProps {
   onUpload: (files: File[]) => void;
@@ -10,11 +10,11 @@ interface UploadFormProps {
   supportedFormats: string[];
 }
 
-export default function UploadForm({ 
-  onUpload, 
-  isConverting, 
+export default function UploadForm({
+  onUpload,
+  isConverting,
   maxFileSize,
-  supportedFormats 
+  supportedFormats,
 }: UploadFormProps) {
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -34,14 +34,16 @@ export default function UploadForm({
     e.stopPropagation();
     setDragActive(false);
 
-    const files = Array.from(e.dataTransfer.files).filter(file => 
-      file.type.startsWith('audio/')
+    const files = Array.from(e.dataTransfer.files).filter(
+      (file) =>
+        file.type.startsWith("audio/") ||
+        file.name.match(/\.(mp3|wav|ogg|m4a|flac)$/i)
     );
-    
+
     if (files.length > 0) {
       onUpload(files);
     } else {
-      alert('Please upload audio files only');
+      alert("Please upload valid audio files only (MP3, WAV, M4A, OGG, FLAC)");
     }
   };
 
@@ -55,19 +57,22 @@ export default function UploadForm({
 
   return (
     <div
-      className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors duration-200 ${
-        dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+      className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer relative overflow-hidden group ${
+        dragActive
+          ? "border-cyan-400 bg-cyan-950/20 shadow-xl shadow-cyan-500/10"
+          : "border-slate-800 hover:border-slate-700 bg-slate-950/40 hover:bg-slate-900/40"
       }`}
       onDragEnter={handleDrag}
       onDragLeave={handleDrag}
       onDragOver={handleDrag}
       onDrop={handleDrop}
+      onClick={() => inputRef.current?.click()}
     >
       <input
         ref={inputRef}
         type="file"
         className="hidden"
-        accept="audio/*"
+        accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac"
         onChange={handleChange}
         disabled={isConverting}
         multiple
@@ -76,43 +81,32 @@ export default function UploadForm({
       <div className="space-y-4">
         <div className="flex justify-center">
           {isConverting ? (
-            <Loader2 className="h-12 w-12 text-blue-500 animate-spin" />
+            <div className="p-4 bg-cyan-500/10 rounded-2xl border border-cyan-500/30">
+              <Loader2 className="h-10 w-10 text-cyan-400 animate-spin" />
+            </div>
           ) : (
-            <div className="p-3 bg-blue-50 rounded-full">
-              <Upload className="h-10 w-10 text-blue-500" />
+            <div className="p-4 bg-gradient-to-tr from-cyan-500/10 via-purple-500/10 to-indigo-500/10 rounded-2xl border border-slate-700/60 group-hover:scale-105 group-hover:border-cyan-500/50 transition-all shadow-lg">
+              <Upload className="h-10 w-10 text-cyan-400" />
             </div>
           )}
         </div>
-        
-        <div className="space-y-2">
-          <h3 className="text-lg font-medium text-gray-800">
-            {isConverting
-              ? 'Converting your audio to 8D...'
-              : 'Upload Your Audio Files'}
+
+        <div className="space-y-1.5">
+          <h3 className="text-base font-semibold text-slate-100 flex items-center justify-center gap-2">
+            <span>{isConverting ? "Processing Audio Engine..." : "Drop audio files here or click to browse"}</span>
           </h3>
-          <p className="text-gray-600">
-            Drag and drop your audio files here, or click to select
+          <p className="text-xs text-slate-400 max-w-md mx-auto">
+            Lossless in-browser conversion. Your audio never leaves your device.
           </p>
-          <div className="text-sm text-gray-500 space-y-1">
-            <p>Supported formats: {supportedFormats.map(format => 
-              format.split('/')[1].toUpperCase()
-            ).join(', ')}</p>
-            <p>Maximum file size: {maxFileSize / 1024 / 1024}MB</p>
-            <p>You can upload multiple files at once</p>
+          <div className="pt-2 flex flex-wrap items-center justify-center gap-2 text-[11px] text-slate-400 font-mono">
+            <span className="px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800">
+              MP3, WAV, M4A, OGG, FLAC
+            </span>
+            <span className="px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800">
+              Up to {maxFileSize / 1024 / 1024}MB
+            </span>
           </div>
         </div>
-
-        {!isConverting && (
-          <div className="space-y-3">
-            <button
-              onClick={() => inputRef.current?.click()}
-              className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors inline-flex items-center gap-2"
-            >
-              <File className="h-5 w-5" />
-              Select Files
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

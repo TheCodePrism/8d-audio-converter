@@ -3,86 +3,88 @@ import AudioConverter from "@/components/AudioConverter";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Banner from "@/components/Banner";
-import { Headphones, ShieldCheck, Zap, Compass } from "lucide-react";
+import { Headphones, ShieldCheck, Zap, Compass, Disc3, Radio } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "8D Audio Converter — Free Online 360° Spatial Sound Generator",
+  title: "8D Audio Converter & Spatial Player — 360° Binaural Music Studio",
   description:
-    "Convert normal audio tracks to 8D audio online with real-time 3D rotation, dynamic bass boost, and room reverb.",
+    "Convert normal songs and audio tracks to 8D audio online with real-time 3D rotation, dynamic bass boost, and room reverb. Listen with headphones for 360° binaural immersion.",
 };
 
 export default function Home() {
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50">
+    <div className="flex flex-col min-h-screen bg-[#07090E] text-slate-100 selection:bg-cyan-500 selection:text-black">
       <Banner />
       <Header />
 
-      <main className="flex-grow p-4 md:p-8">
-        <div className="max-w-4xl mx-auto space-y-8">
-          {/* Hero Header */}
-          <div className="text-center space-y-3 pt-4">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold">
-              <Headphones className="w-3.5 h-3.5" />
-              <span>Headphones Recommended</span>
-            </div>
-            <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600">
-              8D Audio Converter
-            </h1>
-            <p className="text-slate-600 text-sm md:text-base max-w-2xl mx-auto leading-relaxed">
-              Upload any audio track to create an immersive 360° spatial audio
-              experience where sound smoothly orbits around your head with deep
-              bass and reverberation.
-            </p>
+      <main className="flex-grow p-4 md:p-8 max-w-7xl mx-auto w-full space-y-8">
+        {/* Top Studio Hero Header */}
+        <div className="text-center space-y-3 pt-2 md:pt-4">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-mono font-medium tracking-wide">
+            <Radio className="w-3.5 h-3.5 animate-pulse" />
+            <span>360° BINAURAL HRTF SPATIALIZER</span>
           </div>
 
-          {/* Main Converter Tool */}
-          <AudioConverter />
+          <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight">
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-500">
+              8D Spatial Audio
+            </span>{" "}
+            Music Player
+          </h1>
 
-          {/* Value Prop Badges */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
-            <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-blue-50 text-blue-600">
-                <Compass className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-slate-800">
-                  True 360° HRTF Orbit
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Simulates realistic binaural positioning moving continuously
-                  front, back, left, and right.
-                </p>
-              </div>
+          <p className="text-slate-400 text-xs md:text-sm max-w-2xl mx-auto leading-relaxed">
+            Convert standard stereo tracks into an immersive 8D soundscape that orbits
+            around your head in real-time. Load local tracks, paste YouTube songs, or try our instant demo audio.
+          </p>
+        </div>
+
+        {/* Main 8D Music Player & Studio Converter */}
+        <AudioConverter />
+
+        {/* Feature Highlights Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
+          <div className="p-4 bg-slate-900/60 rounded-2xl border border-slate-800/80 backdrop-blur-md flex items-start gap-3.5 shadow-lg">
+            <div className="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+              <Compass className="w-5 h-5" />
             </div>
-
-            <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600">
-                <ShieldCheck className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-slate-800">
-                  100% Private & In-Browser
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Your audio never leaves your device. All DSP processing is
-                  rendered directly in your browser.
-                </p>
-              </div>
+            <div>
+              <h3 className="text-sm font-semibold text-white">
+                True 360° HRTF Orbit
+              </h3>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                Simulates real-world acoustic ear delays (ITD) and head shadow
+                filters (ILD) to rotate sound smoothly around you.
+              </p>
             </div>
+          </div>
 
-            <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-purple-50 text-purple-600">
-                <Zap className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-slate-800">
-                  Customizable Presets
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Tune rotation speeds, reverb room size, and bass boost with
-                  instant A/B audio comparison.
-                </p>
-              </div>
+          <div className="p-4 bg-slate-900/60 rounded-2xl border border-slate-800/80 backdrop-blur-md flex items-start gap-3.5 shadow-lg">
+            <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+              <Disc3 className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-white">
+                Instant A/B Audio Switch
+              </h3>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                Toggle seamlessly between the original stereo mix and the 8D master
+                during playback to hear the acoustic difference.
+              </p>
+            </div>
+          </div>
+
+          <div className="p-4 bg-slate-900/60 rounded-2xl border border-slate-800/80 backdrop-blur-md flex items-start gap-3.5 shadow-lg">
+            <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-white">
+                100% Private In-Browser
+              </h3>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                All DSP rendering is executed on your device using Web Audio API.
+                Your uploaded files never touch a cloud server.
+              </p>
             </div>
           </div>
         </div>

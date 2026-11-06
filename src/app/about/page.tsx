@@ -10,15 +10,19 @@ export const metadata = {
 
 export default function AboutPage() {
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50">
+    <div className="flex flex-col min-h-screen bg-[#07090E] text-slate-100">
       <Header />
       <main className="flex-grow p-4 md:p-8">
-        <div className="max-w-3xl mx-auto space-y-8 bg-white p-6 sm:p-10 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="max-w-3xl mx-auto space-y-8 bg-slate-900/80 p-6 sm:p-10 rounded-3xl border border-slate-800 shadow-2xl backdrop-blur-xl">
           <div className="space-y-3">
-            <h1 className="text-3xl font-extrabold text-slate-900">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-mono font-medium">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Acoustic Science</span>
+            </div>
+            <h1 className="text-3xl font-extrabold text-white">
               What is 8D Audio?
             </h1>
-            <p className="text-slate-600 leading-relaxed">
+            <p className="text-slate-300 leading-relaxed text-sm md:text-base">
               8D Audio is an immersive audio production technique that uses
               binaural panning, frequency attenuation, and spatial reverberation
               to create the illusion of music moving physically around your head
@@ -27,41 +31,41 @@ export default function AboutPage() {
           </div>
 
           <div className="space-y-4">
-            <h2 className="text-xl font-bold text-slate-800">
+            <h2 className="text-xl font-bold text-white">
               The Science: Head-Related Transfer Function (HRTF)
             </h2>
-            <p className="text-slate-600 text-sm leading-relaxed">
+            <p className="text-slate-400 text-sm leading-relaxed">
               When humans hear a sound in the real world, the sound waves arrive
               at each ear at slightly different times (Interaural Time
               Difference) and with slight volume and frequency filtering caused
               by the shape of our head and ears (Interaural Level Difference).
-              Our converter simulates these precise acoustic transformations using
+              Our studio simulates these precise acoustic transformations using
               the Web Audio API’s HRTF spatialization model.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-slate-100">
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-              <Headphones className="w-5 h-5 text-blue-600 mb-2" />
-              <h3 className="font-semibold text-slate-800 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-slate-800">
+            <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800">
+              <Headphones className="w-5 h-5 text-cyan-400 mb-2" />
+              <h3 className="font-semibold text-white text-sm">
                 Headphones Required
               </h3>
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
                 Because 8D audio relies on stereo channel separation delivered
-                directly to each ear, listening on normal speakers merges both
-                channels and reduces the effect.
+                directly to each ear, regular speakers cannot reproduce the 3D
+                binaural illusion.
               </p>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-              <Shield className="w-5 h-5 text-emerald-600 mb-2" />
-              <h3 className="font-semibold text-slate-800 text-sm">
-                100% In-Browser Privacy
+            <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800">
+              <Shield className="w-5 h-5 text-emerald-400 mb-2" />
+              <h3 className="font-semibold text-white text-sm">
+                100% In-Browser DSP
               </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Your audio files are never uploaded to any remote server or
-                cloud. All DSP mathematics happen locally inside your browser
-                hardware.
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                Your files are decoded and processed locally in your browser
+                using high-performance Web Audio API threads without any cloud
+                uploads.
               </p>
             </div>
           </div>
@@ -71,4 +75,3 @@ export default function AboutPage() {
     </div>
   );
 }
-
