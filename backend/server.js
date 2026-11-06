@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const { execFile } = require("child_process");
+const { execFile, spawn } = require("child_process");
 const { promisify } = require("util");
 const { existsSync } = require("fs");
 const path = require("path");
@@ -150,8 +150,8 @@ app.post("/youtube/info", async (req, res) => {
 });
 
 // ── GET /youtube/stream?url=... ───────────────────────────────────────────────
-// Extracts signed CDN URL via yt-dlp and proxies the audio stream
-app.get("/youtube/stream", async (req, res) => {
+// Streams audio directly from yt-dlp to avoid Google CDN 403 Forbidden errors
+app.get("/youtube/stream", (req, res) => {
   const { url: videoUrl } = req.query;
 
   if (!videoUrl || !isValidYouTubeUrl(videoUrl)) {
@@ -161,53 +161,56 @@ app.get("/youtube/stream", async (req, res) => {
   try {
     const ytDlpBinary = getYtDlpPath();
 
-    const { stdout } = await execFileAsync(
-      ytDlpBinary,
-      [
-        "-f", "ba[ext=m4a]/ba/b",
-        "--get-url",
-        "--no-playlist",
-        "--no-warnings",
-        "--no-check-certificates",
-        videoUrl,
-      ],
-      { timeout: 25000 }
-    );
+    const args = [
+      "-f",
+      "ba[ext=m4a]/ba/b",
+      "-o",
+      "-",
+      "--no-playlist",
+      "--no-warnings",
+      "--no-check-certificates",
+      videoUrl,
+    ];
 
-    const streamUrl = stdout.trim().split("\n")[0];
-    if (!streamUrl || !streamUrl.startsWith("http")) {
-      throw new Error("Could not extract a valid audio stream URL.");
-    }
+    const child = spawn(ytDlpBinary, args);
 
-    // Fetch the CDN stream and pipe it to the client
-    const mediaResponse = await fetch(streamUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      },
-    });
-
-    if (!mediaResponse.ok || !mediaResponse.body) {
-      throw new Error(`Media fetch failed with status: ${mediaResponse.status}`);
-    }
-
-    const contentType = mediaResponse.headers.get("content-type") || "audio/mp4";
-    const contentLength = mediaResponse.headers.get("content-length");
-
-    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Type", "audio/mp4");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Access-Control-Allow-Origin", "*");
-    if (contentLength) res.setHeader("Content-Length", contentLength);
 
-    // Stream the response body
-    const { Readable } = require("stream");
-    const nodeStream = Readable.fromWeb(mediaResponse.body);
-    nodeStream.pipe(res);
+    // Pipe audio data directly to client
+    child.stdout.pipe(res);
+
+    let stderr = "";
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", (err) => {
+      console.error("yt-dlp spawn error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to spawn yt-dlp process." });
+      }
+    });
+
+    child.on("close", (code) => {
+      if (code !== 0 && !res.headersSent) {
+        console.error("yt-dlp stream failed with code:", code, stderr);
+        res.status(500).json({ error: "Failed to download audio from YouTube." });
+      }
+    });
+
+    // Abort yt-dlp process if client cancels/closes connection early
+    req.on("close", () => {
+      child.kill("SIGKILL");
+    });
   } catch (err) {
     console.error("YouTube streaming error:", err);
-    res.status(500).json({
-      error: err?.message || "Failed to stream YouTube audio.",
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: err?.message || "Failed to stream YouTube audio.",
+      });
+    }
   }
 });
 
