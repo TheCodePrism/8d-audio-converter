@@ -4,9 +4,135 @@ const { execFile, spawn } = require("child_process");
 const { promisify } = require("util");
 const { existsSync } = require("fs");
 const path = require("path");
+const https = require("https");
+const http = require("http");
 
 const execFileAsync = promisify(execFile);
 const app = express();
+
+// ── Invidious Instances (tried in order) ──────────────────────────────────────
+// These act as YouTube proxy servers, allowing us to bypass Render's datacenter
+// IP block. The /api/v1/videos/:id endpoint returns stream URLs, and
+// /videoplayback?... proxies the actual audio bytes through the instance.
+const INVIDIOUS_INSTANCES = [
+  "yt.chocolatemoo53.com",
+  "invidious.privacydev.net",
+  "inv.nadeko.net",
+  "invidious.perennialte.ch",
+  "iv.ggtyler.dev",
+];
+
+// ── Helper: extract YouTube video ID ─────────────────────────────────────────
+function extractVideoId(urlStr) {
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.hostname === "youtu.be")
+      return parsed.pathname.slice(1).split("/")[0].split("?")[0];
+    if (parsed.pathname.startsWith("/shorts/"))
+      return parsed.pathname.split("/shorts/")[1]?.split("/")[0]?.split("?")[0] || "";
+    return parsed.searchParams.get("v") || "";
+  } catch {
+    return "";
+  }
+}
+
+// ── Invidious: fetch audio info for a videoId ─────────────────────────────────
+// Returns { proxyUrl, contentType, instance } or null if all instances fail.
+async function getInvidiousAudioInfo(videoId) {
+  for (const instance of INVIDIOUS_INSTANCES) {
+    try {
+      const apiUrl = `https://${instance}/api/v1/videos/${videoId}`;
+      console.log(`[Invidious] Trying ${instance} for videoId=${videoId}`);
+      const apiRes = await fetch(apiUrl, {
+        signal: AbortSignal.timeout(8000),
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; 8DAudioBot/1.0)" },
+      });
+      if (!apiRes.ok) {
+        console.warn(`[Invidious] ${instance} API returned ${apiRes.status}`);
+        continue;
+      }
+      const data = await apiRes.json();
+      if (data.error) {
+        console.warn(`[Invidious] ${instance} returned error: ${data.error}`);
+        continue;
+      }
+
+      const formats = data.adaptiveFormats || [];
+      // Prefer itag 140 (m4a 128kbps), then 251 (opus), then any audio
+      const preferredItags = ["140", "251", "250", "249", "139"];
+      let audio = preferredItags
+        .map((itag) => formats.find((f) => String(f.itag) === itag && f.url))
+        .find(Boolean);
+      if (!audio) {
+        audio = formats.find((f) => f.type?.startsWith("audio/") && f.url);
+      }
+      if (!audio?.url) {
+        console.warn(`[Invidious] ${instance} has no usable audio format`);
+        continue;
+      }
+
+      // Build the Invidious proxy URL from the query string of the googlevideo URL
+      const audioUrl = new URL(audio.url);
+      const proxyUrl = `https://${instance}/videoplayback${audioUrl.search}`;
+      const contentType = audio.type?.split(";")[0] || "audio/mp4";
+
+      console.log(`[Invidious] ✓ ${instance} audio itag=${audio.itag} type=${contentType}`);
+      return { proxyUrl, contentType, instance };
+    } catch (e) {
+      console.warn(`[Invidious] ${instance} failed: ${e.message}`);
+    }
+  }
+  return null;
+}
+
+// ── Invidious: pipe proxied audio stream to Express response ──────────────────
+function pipeInvidiousStream(proxyUrl, instance, contentType, req, res) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(proxyUrl);
+    const lib = parsed.protocol === "https:" ? https : http;
+
+    const options = {
+      hostname: parsed.hostname,
+      port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+      path: parsed.pathname + parsed.search,
+      method: "GET",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; 8DAudioBot/1.0)",
+        Referer: `https://${instance}/`,
+        // Forward Range header if client requested partial content
+        ...(req.headers.range ? { Range: req.headers.range } : {}),
+      },
+      timeout: 30000,
+    };
+
+    const proxyReq = lib.request(options, (proxyRes) => {
+      if (proxyRes.statusCode < 200 || proxyRes.statusCode >= 400) {
+        proxyRes.resume();
+        return reject(new Error(`Invidious stream returned HTTP ${proxyRes.statusCode}`));
+      }
+      res.setHeader("Content-Type", proxyRes.headers["content-type"] || contentType);
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      if (proxyRes.headers["content-length"])
+        res.setHeader("Content-Length", proxyRes.headers["content-length"]);
+      if (proxyRes.headers["content-range"])
+        res.setHeader("Content-Range", proxyRes.headers["content-range"]);
+      res.status(proxyRes.statusCode === 206 ? 206 : 200);
+
+      proxyRes.pipe(res);
+      proxyRes.on("end", () => resolve(true));
+      proxyRes.on("error", reject);
+      req.on("close", () => proxyReq.destroy());
+    });
+
+    proxyReq.on("error", reject);
+    proxyReq.on("timeout", () => {
+      proxyReq.destroy();
+      reject(new Error("Invidious stream timed out"));
+    });
+    proxyReq.end();
+  });
+}
 
 app.use(cors());
 app.use(express.json());
@@ -370,16 +496,44 @@ app.post("/youtube/info", async (req, res) => {
 });
 
 // ── GET /youtube/stream?url=... ───────────────────────────────────────────────
-// Streams audio directly from yt-dlp to avoid Google CDN 403 Forbidden errors
-app.get("/youtube/stream", (req, res) => {
+// Primary path: Invidious proxy (bypasses Render datacenter IP block entirely)
+// Fallback: yt-dlp spawned locally (may fail on Render due to YouTube IP block)
+app.get("/youtube/stream", async (req, res) => {
   const { url: videoUrl } = req.query;
 
   if (!videoUrl || !isValidYouTubeUrl(videoUrl)) {
     return res.status(400).json({ error: "Invalid YouTube URL provided." });
   }
 
+  const cleanUrl = cleanYouTubeUrl(videoUrl);
+  const videoId = extractVideoId(cleanUrl);
+
+  // ── Primary: Invidious proxy ───────────────────────────────────────────────
+  if (videoId) {
+    try {
+      const audioInfo = await getInvidiousAudioInfo(videoId);
+      if (audioInfo) {
+        console.log(`[Invidious] Streaming via ${audioInfo.instance} for ${videoId}`);
+        await pipeInvidiousStream(
+          audioInfo.proxyUrl,
+          audioInfo.instance,
+          audioInfo.contentType,
+          req,
+          res
+        );
+        return; // success
+      }
+    } catch (invErr) {
+      console.error("[Invidious] All instances failed or stream error:", invErr.message);
+    }
+  }
+
+  // ── Fallback: yt-dlp ───────────────────────────────────────────────────────
+  if (res.headersSent) return; // Invidious already started sending, don't retry
+
+  console.warn("[Stream] Invidious unavailable, falling back to yt-dlp...");
+
   try {
-    const cleanUrl = cleanYouTubeUrl(videoUrl);
     const ytDlpBinary = getYtDlpPath();
     const cookieArgs = getCookieArgs();
 
@@ -443,19 +597,22 @@ app.get("/youtube/stream", (req, res) => {
 
       child.on("close", (code) => {
         if (code !== 0) {
-          console.error(`yt-dlp stream failed (useCookies=${useCookies}, client=${client}) with code ${code}:`, stderr);
+          console.error(
+            `yt-dlp stream failed (useCookies=${useCookies}, client=${client}) with code ${code}:`,
+            stderr
+          );
           if (!res.headersSent && !hasSentHeaders) {
             if (useCookies && cookieArgs.length > 0) {
-              console.warn("[YouTube Auth] Stream with cookies failed. Retrying automatically WITHOUT cookies...");
+              console.warn("[YouTube Auth] Stream with cookies failed. Retrying WITHOUT cookies...");
               startStream(false, client);
               return;
             }
-            if (client !== "android,web") {
-              console.warn("[YouTube Auth] Stream failed with primary clients. Retrying with android,web...");
-              startStream(false, "android,web");
-              return;
-            }
-            const cleanErr = stderr.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("Command failed:")).pop() || "yt-dlp stream exited.";
+            const cleanErr =
+              stderr
+                .split("\n")
+                .map((l) => l.trim())
+                .filter((l) => l && !l.startsWith("Command failed:"))
+                .pop() || "yt-dlp stream exited with error.";
             res.status(500).json({ error: cleanErr });
           } else {
             res.destroy();
