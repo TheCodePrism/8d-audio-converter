@@ -23,7 +23,18 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify(body),
     });
 
-    const data = await response.json();
+    const rawText = await response.text();
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = {
+        error:
+          response.status === 502 || response.status === 503
+            ? "YouTube backend service is temporarily waking up. Please retry in a few moments."
+            : rawText || "Failed to parse response from YouTube service.",
+      };
+    }
     return NextResponse.json(data, { status: response.status });
   } catch (error: any) {
     console.error("YouTube info proxy error:", error);

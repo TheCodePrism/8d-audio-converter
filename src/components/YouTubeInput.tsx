@@ -60,9 +60,20 @@ export default function YouTubeInput({
         body: JSON.stringify({ url: url.trim() }),
       });
 
-      const data = await res.json();
+      const rawText = await res.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        throw new Error(
+          res.ok
+            ? "Invalid response from server."
+            : "The YouTube service is currently waking up or unavailable. Please retry in a few seconds."
+        );
+      }
+
       if (!res.ok) {
-        throw new Error(data.error || "Failed to load YouTube data.");
+        throw new Error(data?.error || "Failed to load YouTube data.");
       }
 
       setInfo(data);

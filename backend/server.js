@@ -166,11 +166,12 @@ app.post("/youtube/info", async (req, res) => {
   try {
     const cleanUrl = cleanYouTubeUrl(url);
     const ytDlpBinary = getYtDlpPath();
-    const args = [
+    const cookieArgs = getCookieArgs();
+
+    const baseArgs = [
       "--extractor-args",
       "youtube:player_client=tv,mweb,default",
       "--force-ipv4",
-      ...getCookieArgs(),
       "--dump-single-json",
       "--flat-playlist",
       "--no-warnings",
@@ -178,10 +179,27 @@ app.post("/youtube/info", async (req, res) => {
       cleanUrl,
     ];
 
-    const { stdout } = await execFileAsync(ytDlpBinary, args, {
-      maxBuffer: 15 * 1024 * 1024,
-      timeout: 60000,
-    });
+    let stdout;
+    try {
+      const res = await execFileAsync(ytDlpBinary, [...cookieArgs, ...baseArgs], {
+        maxBuffer: 15 * 1024 * 1024,
+        timeout: 60000,
+      });
+      stdout = res.stdout;
+    } catch (cookieErr) {
+      if (cookieArgs.length > 0) {
+        console.warn(
+          "[YouTube Auth] Extraction with cookies failed (likely datacenter account checkpoint). Retrying automatically WITHOUT cookies..."
+        );
+        const res = await execFileAsync(ytDlpBinary, baseArgs, {
+          maxBuffer: 15 * 1024 * 1024,
+          timeout: 60000,
+        });
+        stdout = res.stdout;
+      } else {
+        throw cookieErr;
+      }
+    }
 
     const data = JSON.parse(stdout);
     const isPlaylist =
@@ -272,12 +290,13 @@ app.get("/youtube/stream", (req, res) => {
   try {
     const cleanUrl = cleanYouTubeUrl(videoUrl);
     const ytDlpBinary = getYtDlpPath();
+    const cookieArgs = getCookieArgs();
 
-    const args = [
+    const getArgs = (withCookies) => [
       "--extractor-args",
       "youtube:player_client=tv,mweb,default",
       "--force-ipv4",
-      ...getCookieArgs(),
+      ...(withCookies ? cookieArgs : []),
       "-f",
       "ba[ext=m4a]/ba/b",
       "-o",
@@ -288,44 +307,63 @@ app.get("/youtube/stream", (req, res) => {
       cleanUrl,
     ];
 
-    const child = spawn(ytDlpBinary, args);
+    const startStream = (useCookies) => {
+      const child = spawn(ytDlpBinary, getArgs(useCookies));
 
-    res.setHeader("Content-Type", "audio/mp4");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Access-Control-Allow-Origin", "*");
+      let hasSentHeaders = false;
+      let stderr = "";
 
-    // Pipe audio data directly to client
-    child.stdout.pipe(res);
+      child.stdout.on("data", (chunk) => {
+        if (!hasSentHeaders && !res.headersSent) {
+          res.setHeader("Content-Type", "audio/mp4");
+          res.setHeader("Cache-Control", "no-cache");
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          hasSentHeaders = true;
+        }
+        res.write(chunk);
+      });
 
-    let stderr = "";
-    child.stderr.on("data", (chunk) => {
-      stderr = (stderr + chunk.toString()).slice(-4000);
-    });
+      child.stdout.on("end", () => {
+        if (hasSentHeaders || res.headersSent) {
+          res.end();
+        }
+      });
 
-    child.on("error", (err) => {
-      console.error("yt-dlp spawn error:", err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Failed to spawn yt-dlp process." });
-      } else {
-        res.destroy();
-      }
-    });
+      child.stderr.on("data", (chunk) => {
+        stderr = (stderr + chunk.toString()).slice(-4000);
+      });
 
-    child.on("close", (code) => {
-      if (code !== 0) {
-        console.error("yt-dlp stream failed with code:", code, stderr);
-        if (!res.headersSent) {
-          res.status(500).json({ error: "Failed to download audio from YouTube." });
+      child.on("error", (err) => {
+        console.error("yt-dlp spawn error:", err);
+        if (!res.headersSent && !hasSentHeaders) {
+          res.status(500).json({ error: "Failed to spawn yt-dlp process." });
         } else {
           res.destroy();
         }
-      }
-    });
+      });
 
-    // Abort yt-dlp process if client cancels/closes connection early
-    req.on("close", () => {
-      child.kill("SIGKILL");
-    });
+      child.on("close", (code) => {
+        if (code !== 0) {
+          console.error(`yt-dlp stream failed (useCookies=${useCookies}) with code:`, code, stderr);
+          if (!res.headersSent && !hasSentHeaders) {
+            if (useCookies && cookieArgs.length > 0) {
+              console.warn("[YouTube Auth] Stream with cookies failed. Retrying automatically WITHOUT cookies...");
+              startStream(false);
+              return;
+            }
+            res.status(500).json({ error: "Failed to download audio from YouTube." });
+          } else {
+            res.destroy();
+          }
+        }
+      });
+
+      req.on("close", () => {
+        child.kill("SIGKILL");
+      });
+    };
+
+    startStream(cookieArgs.length > 0);
   } catch (err) {
     console.error("YouTube streaming error:", err);
     if (!res.headersSent) {
