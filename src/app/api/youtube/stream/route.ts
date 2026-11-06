@@ -1,8 +1,11 @@
 import { NextRequest } from "next/server";
 
+export const maxDuration = 60; // Allow sufficient time for audio streaming from backend
+export const dynamic = "force-dynamic";
+
 // Proxy to the yt-dlp backend (Render/Railway)
 // Set YOUTUBE_BACKEND_URL in Vercel environment variables
-const BACKEND_URL = process.env.YOUTUBE_BACKEND_URL;
+const BACKEND_URL = process.env.YOUTUBE_BACKEND_URL?.replace(/\/+$/, "");
 
 export async function GET(req: NextRequest) {
   if (!BACKEND_URL) {

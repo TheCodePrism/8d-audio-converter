@@ -113,6 +113,7 @@ function cleanYouTubeUrl(urlStr) {
   try {
     const parsed = new URL(urlStr);
     let videoId = "";
+    const listId = parsed.searchParams.get("list") || "";
 
     if (parsed.hostname === "youtu.be") {
       videoId = parsed.pathname.replace(/^\//, "").split("/")[0].split("?")[0];
@@ -122,11 +123,19 @@ function cleanYouTubeUrl(urlStr) {
       parsed.hostname === "m.youtube.com" ||
       parsed.hostname === "youtube.com"
     ) {
-      videoId = parsed.searchParams.get("v") || "";
+      if (parsed.pathname.startsWith("/shorts/")) {
+        videoId = parsed.pathname.split("/shorts/")[1]?.split("/")[0]?.split("?")[0] || "";
+      } else {
+        videoId = parsed.searchParams.get("v") || "";
+      }
     }
 
-    // Canonicalize any video URL (including YouTube Music and youtu.be) to standard watch URL
+    // Canonicalize video URLs (standard, music, shorts, youtu.be) to watch URL
     if (videoId) {
+      // Preserve legitimate user or album playlist parameters
+      if (listId && (listId.startsWith("PL") || listId.startsWith("OLAK5uy_"))) {
+        return `https://www.youtube.com/watch?v=${videoId}&list=${listId}`;
+      }
       return `https://www.youtube.com/watch?v=${videoId}`;
     }
 
@@ -290,20 +299,26 @@ app.get("/youtube/stream", (req, res) => {
 
     let stderr = "";
     child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
+      stderr = (stderr + chunk.toString()).slice(-4000);
     });
 
     child.on("error", (err) => {
       console.error("yt-dlp spawn error:", err);
       if (!res.headersSent) {
         res.status(500).json({ error: "Failed to spawn yt-dlp process." });
+      } else {
+        res.destroy();
       }
     });
 
     child.on("close", (code) => {
-      if (code !== 0 && !res.headersSent) {
+      if (code !== 0) {
         console.error("yt-dlp stream failed with code:", code, stderr);
-        res.status(500).json({ error: "Failed to download audio from YouTube." });
+        if (!res.headersSent) {
+          res.status(500).json({ error: "Failed to download audio from YouTube." });
+        } else {
+          res.destroy();
+        }
       }
     });
 
