@@ -165,6 +165,48 @@ app.post("/youtube/info", async (req, res) => {
 
   try {
     const cleanUrl = cleanYouTubeUrl(url);
+    const parsed = new URL(cleanUrl);
+    const isPlaylistUrl = parsed.searchParams.has("list");
+
+    // ── Fast path: Official YouTube oEmbed API for single tracks ───────────────
+    // YouTube's oEmbed endpoint is a public Google API that returns title, author,
+    // and high-res thumbnail in ~50ms and NEVER blocks datacenter IP addresses.
+    if (!isPlaylistUrl) {
+      try {
+        let videoId = "";
+        if (parsed.hostname === "youtu.be") {
+          videoId = parsed.pathname.replace(/^\//, "").split("/")[0].split("?")[0];
+        } else {
+          videoId = parsed.searchParams.get("v") || "";
+        }
+
+        if (videoId) {
+          const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(cleanUrl)}&format=json`;
+          const oembedRes = await fetch(oembedUrl);
+          if (oembedRes.ok) {
+            const oembedData = await oembedRes.json();
+            const bestThumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+            return res.json({
+              isPlaylist: false,
+              title: oembedData.title || "YouTube Track",
+              thumbnail: bestThumbnail,
+              tracks: [
+                {
+                  id: videoId,
+                  title: oembedData.title || "YouTube Track",
+                  url: cleanUrl,
+                  thumbnail: bestThumbnail,
+                  author: oembedData.author_name || undefined,
+                },
+              ],
+            });
+          }
+        }
+      } catch (fastErr) {
+        console.warn("[YouTube Info] Fast oEmbed check failed, falling back to yt-dlp:", fastErr.message);
+      }
+    }
+
     const ytDlpBinary = getYtDlpPath();
     const cookieArgs = getCookieArgs();
 
