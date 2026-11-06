@@ -65,6 +65,9 @@ app.post("/youtube/info", async (req, res) => {
   try {
     const ytDlpBinary = getYtDlpPath();
     const args = [
+      "--extractor-args",
+      "youtube:player_client=android,ios,web",
+      "--force-ipv4",
       "--dump-single-json",
       "--flat-playlist",
       "--no-warnings",
@@ -162,6 +165,9 @@ app.get("/youtube/stream", (req, res) => {
     const ytDlpBinary = getYtDlpPath();
 
     const args = [
+      "--extractor-args",
+      "youtube:player_client=android,ios,web",
+      "--force-ipv4",
       "-f",
       "ba[ext=m4a]/ba/b",
       "-o",
