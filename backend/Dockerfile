@@ -8,7 +8,7 @@ RUN npm install --production
 # ---- Runtime stage ----
 FROM node:20-bookworm-slim AS runner
 
-# Install system deps, latest yt-dlp, ffmpeg, and bgutil PO-token provider
+# Install ffmpeg, ca-certificates, python3, and yt-dlp with curl-cffi for Chrome TLS impersonation
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     unzip \
@@ -16,11 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     python3 \
     python3-pip \
-    && pip3 install --break-system-packages -U yt-dlp bgutil-ytdlp-pot-provider \
-    && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
-       -o /usr/local/bin/yt-dlp \
-    && chmod a+rx /usr/local/bin/yt-dlp \
-    && rm -rf /var/lib/apt/lists/* /root/.cache/pip
+    && pip3 install --no-cache-dir --break-system-packages -U "yt-dlp[curl-cffi]" \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
