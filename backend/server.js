@@ -14,9 +14,13 @@ app.use(express.json());
 // ── Resolve yt-dlp binary ─────────────────────────────────────────────────────
 function getYtDlpPath() {
   const candidates = [
+    path.join(__dirname, "..", "bin", "yt-dlp.exe"),
+    path.join(__dirname, "..", "bin", "yt-dlp"),
+    path.join(process.cwd(), "bin", "yt-dlp.exe"),
     path.join(process.cwd(), "bin", "yt-dlp"),
     "/usr/local/bin/yt-dlp",
     "/usr/bin/yt-dlp",
+    "yt-dlp.exe",
     "yt-dlp",
   ];
   for (const p of candidates) {
