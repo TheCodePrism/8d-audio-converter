@@ -63,10 +63,24 @@ function isValidYouTubeUrl(urlStr) {
 function cleanYouTubeUrl(urlStr) {
   try {
     const parsed = new URL(urlStr);
+    let videoId = "";
+
     if (parsed.hostname === "youtu.be") {
-      const id = parsed.pathname.replace(/^\//, "");
-      return `https://www.youtube.com/watch?v=${id}`;
+      videoId = parsed.pathname.replace(/^\//, "").split("/")[0].split("?")[0];
+    } else if (
+      parsed.hostname === "music.youtube.com" ||
+      parsed.hostname === "www.youtube.com" ||
+      parsed.hostname === "m.youtube.com" ||
+      parsed.hostname === "youtube.com"
+    ) {
+      videoId = parsed.searchParams.get("v") || "";
     }
+
+    // Canonicalize any video URL (including YouTube Music and youtu.be) to standard watch URL
+    if (videoId) {
+      return `https://www.youtube.com/watch?v=${videoId}`;
+    }
+
     parsed.searchParams.delete("si");
     parsed.searchParams.delete("feature");
     return parsed.toString();
