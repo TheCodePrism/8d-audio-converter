@@ -137,14 +137,14 @@ export default function YouTubeInput({
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="Paste YouTube Video or Playlist URL (e.g., https://youtube.com/watch?v=...)"
+            placeholder="Paste YouTube Video or Playlist URL..."
             disabled={isLoading || isConverting}
-            className="w-full pl-12 pr-28 py-3.5 bg-slate-950/60 border border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500 transition-all text-slate-100 placeholder-slate-500"
+            className="w-full pl-11 sm:pl-12 pr-24 sm:pr-28 py-3 sm:py-3.5 bg-slate-950/60 border border-slate-800 rounded-xl text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500 transition-all text-slate-100 placeholder-slate-500"
           />
           <button
             type="submit"
             disabled={isLoading || !url.trim() || isConverting}
-            className="absolute right-2 px-4 py-2 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-md shadow-red-500/20"
+            className="absolute right-1.5 sm:right-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-md shadow-red-500/20"
           >
             {isLoading ? (
               <Loader2 className="w-4 h-4 animate-spin" />

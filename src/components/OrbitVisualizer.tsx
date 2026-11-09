@@ -18,8 +18,8 @@ export default function OrbitVisualizer({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const angleRef = useRef<number>(0);
-  const [hudAngle, setHudAngle] = useState(0);
-  const [earPan, setEarPan] = useState("Center");
+  const angleTextRef = useRef<HTMLSpanElement | null>(null);
+  const earPanRef = useRef<HTMLSpanElement | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -51,21 +51,24 @@ export default function OrbitVisualizer({
         angleRef.current += dirMultiplier * angularVelocity * dt;
       }
 
-      // Calculate degrees (0 - 360) for HUD
+      // Calculate degrees (0 - 360) for HUD without triggering React re-renders
       const rawDeg = ((angleRef.current * 180) / Math.PI) % 360;
       const positiveDeg = Math.round(rawDeg < 0 ? rawDeg + 360 : rawDeg);
 
       frameCount++;
       if (frameCount % 6 === 0) {
-        setHudAngle(positiveDeg);
-        // Determine ear panning
-        const sinVal = Math.sin(angleRef.current);
-        if (sinVal > 0.3) {
-          setEarPan(`Right (${Math.round(sinVal * 100)}%)`);
-        } else if (sinVal < -0.3) {
-          setEarPan(`Left (${Math.round(Math.abs(sinVal) * 100)}%)`);
-        } else {
-          setEarPan("Center Balance");
+        if (angleTextRef.current) {
+          angleTextRef.current.textContent = `${positiveDeg}°`;
+        }
+        if (earPanRef.current) {
+          const sinVal = Math.sin(angleRef.current);
+          if (sinVal > 0.3) {
+            earPanRef.current.textContent = `Right (${Math.round(sinVal * 100)}%)`;
+          } else if (sinVal < -0.3) {
+            earPanRef.current.textContent = `Left (${Math.round(Math.abs(sinVal) * 100)}%)`;
+          } else {
+            earPanRef.current.textContent = "Center Balance";
+          }
         }
       }
 
@@ -107,16 +110,16 @@ export default function OrbitVisualizer({
       const orbY = centerY - radius * Math.cos(currentAngle);
 
       // Trajectory trailing glow particles
-      const trailCount = 10;
+      const trailCount = isPlaying ? 8 : 3;
       for (let i = trailCount; i > 0; i--) {
         const trailAngle = currentAngle - dirMultiplier * (i * 0.08);
         const tx = centerX + radius * Math.sin(trailAngle);
         const ty = centerY - radius * Math.cos(trailAngle);
-        const alpha = (1 - i / trailCount) * (isPlaying ? 0.45 : 0.12);
+        const alpha = (1 - i / trailCount) * (isPlaying ? 0.4 : 0.1);
 
         ctx.fillStyle = `rgba(56, 189, 248, ${alpha})`;
         ctx.beginPath();
-        ctx.arc(tx, ty, 2 + (trailCount - i) * 0.4, 0, 2 * Math.PI);
+        ctx.arc(tx, ty, 2 + (trailCount - i) * 0.35, 0, 2 * Math.PI);
         ctx.fill();
       }
 
@@ -132,28 +135,22 @@ export default function OrbitVisualizer({
       ctx.stroke();
 
       // Rotating Audio Beacon Outer Glow
-      const orbGlow = ctx.createRadialGradient(orbX, orbY, 2, orbX, orbY, 18);
+      const orbGlow = ctx.createRadialGradient(orbX, orbY, 2, orbX, orbY, 16);
       orbGlow.addColorStop(0, "#38bdf8");
       orbGlow.addColorStop(0.4, isPlaying ? "#a855f7" : "#0284c7");
       orbGlow.addColorStop(1, "rgba(56, 189, 248, 0)");
       ctx.fillStyle = orbGlow;
       ctx.beginPath();
-      ctx.arc(orbX, orbY, 18, 0, 2 * Math.PI);
+      ctx.arc(orbX, orbY, 16, 0, 2 * Math.PI);
       ctx.fill();
 
-      // Sound wave ripples emitting from orb
+      // Sound wave ripples emitting from orb (only when actively playing to save mobile battery)
       if (isPlaying) {
         const pulse = (now * 0.0025) % 1;
         ctx.strokeStyle = `rgba(56, 189, 248, ${1 - pulse})`;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.arc(orbX, orbY, 6 + pulse * 14, 0, 2 * Math.PI);
-        ctx.stroke();
-
-        const pulse2 = ((now * 0.0025) + 0.5) % 1;
-        ctx.strokeStyle = `rgba(168, 85, 247, ${1 - pulse2})`;
-        ctx.beginPath();
-        ctx.arc(orbX, orbY, 6 + pulse2 * 14, 0, 2 * Math.PI);
         ctx.stroke();
       }
 
@@ -173,10 +170,14 @@ export default function OrbitVisualizer({
       ctx.fillText("RIGHT", centerX + radius + 20, centerY);
       ctx.fillText("LEFT", centerX - radius - 18, centerY);
 
-      animFrameRef.current = requestAnimationFrame(render);
+      // ONLY schedule next frame when active - saves CPU/GPU battery when paused!
+      if (isPlaying) {
+        animFrameRef.current = requestAnimationFrame(render);
+      }
     };
 
-    animFrameRef.current = requestAnimationFrame(render);
+    // Render immediately (draws frame once if paused, or starts animation loop if playing)
+    render(performance.now());
 
     return () => {
       if (animFrameRef.current) {
@@ -186,42 +187,42 @@ export default function OrbitVisualizer({
   }, [isPlaying, options, currentTime]);
 
   return (
-    <div className="flex flex-col items-center justify-center p-3.5 bg-slate-950/80 backdrop-blur-md rounded-2xl border border-slate-800/80 shadow-2xl relative overflow-hidden">
+    <div className="w-full max-w-sm flex flex-col items-center justify-center p-3 sm:p-3.5 bg-slate-950/80 backdrop-blur-md rounded-2xl border border-slate-800/80 shadow-2xl relative overflow-hidden">
       {/* Top HUD Stats */}
       <div className="w-full flex items-center justify-between text-[11px] font-mono text-slate-400 px-2 pb-1 border-b border-slate-800/60 mb-2">
         <div className="flex items-center gap-1.5 text-cyan-400">
-          <Activity className="w-3.5 h-3.5 animate-pulse" />
-          <span>360° HRTF RADAR</span>
+          <Activity className={`w-3.5 h-3.5 ${isPlaying ? "animate-pulse" : ""}`} />
+          <span className="text-[10px] sm:text-[11px]">360° HRTF RADAR</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-purple-400 font-semibold">{hudAngle}°</span>
+        <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-[11px]">
+          <span ref={angleTextRef} className="text-purple-400 font-semibold">0°</span>
           <span className="text-slate-600">|</span>
-          <span className="text-emerald-400">{earPan}</span>
+          <span ref={earPanRef} className="text-emerald-400">Center Balance</span>
         </div>
       </div>
 
-      {/* Radar Canvas with Center Head */}
-      <div className="relative w-56 h-56 flex items-center justify-center">
+      {/* Radar Canvas with Center Head (Compact on mobile) */}
+      <div className="relative w-44 h-44 sm:w-56 sm:h-56 flex items-center justify-center my-1">
         <canvas
           ref={canvasRef}
           width={224}
           height={224}
-          className="absolute inset-0 block rounded-full"
+          className="absolute inset-0 block w-full h-full rounded-full"
         />
 
         {/* Center Listener Head */}
         <div className="z-10 flex flex-col items-center justify-center pointer-events-none">
-          <div className="p-3 bg-gradient-to-tr from-cyan-500/20 to-purple-500/20 rounded-full border border-cyan-400/50 backdrop-blur-md shadow-lg shadow-cyan-500/30">
-            <Headphones className="w-6 h-6 text-cyan-300" />
+          <div className="p-2 sm:p-3 bg-gradient-to-tr from-cyan-500/20 to-purple-500/20 rounded-full border border-cyan-400/50 backdrop-blur-md shadow-lg shadow-cyan-500/30">
+            <Headphones className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-300" />
           </div>
-          <span className="text-[9px] tracking-wider text-slate-400 mt-1 uppercase font-bold font-mono">
+          <span className="text-[8px] sm:text-[9px] tracking-wider text-slate-400 mt-0.5 sm:mt-1 uppercase font-bold font-mono">
             Listener
           </span>
         </div>
       </div>
 
       {/* Bottom Status pill */}
-      <div className="mt-2.5 flex items-center gap-2 px-3 py-1 bg-slate-900/90 rounded-full border border-slate-800 text-[11px] font-medium text-slate-300">
+      <div className="mt-2 flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 bg-slate-900/90 rounded-full border border-slate-800 text-[10px] sm:text-[11px] font-medium text-slate-300">
         <span className="flex items-center gap-1 text-cyan-400">
           <Compass className="w-3 h-3" />
           {options.rotationSpeed}s / loop

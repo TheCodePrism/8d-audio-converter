@@ -214,15 +214,15 @@ export default function AudioPlayer({
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="w-full bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+    <div className="w-full bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 sm:p-5 shadow-2xl backdrop-blur-xl relative overflow-hidden">
       {/* Hidden native audio tag */}
       <audio ref={audioRef} preload="metadata" />
 
       {/* Top Bar: Now Playing + A/B Spatial Switch */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-800/80">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center justify-between gap-2.5 mb-3 sm:mb-4 pb-2.5 sm:pb-3 border-b border-slate-800/80">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
           {/* Vinyl / Cover Art */}
-          <div className="relative w-12 h-12 flex-shrink-0 rounded-xl overflow-hidden bg-slate-800 border border-slate-700/60 shadow-md">
+          <div className="relative w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0 rounded-xl overflow-hidden bg-slate-800 border border-slate-700/60 shadow-md">
             {thumbnail ? (
               <img
                 src={thumbnail}
@@ -238,28 +238,28 @@ export default function AudioPlayer({
                 }`}
                 style={{ animationDuration: "8s" }}
               >
-                <Headphones className="w-6 h-6" />
+                <Headphones className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
             )}
             {/* Center vinyl spindle */}
-            <div className="absolute inset-0 m-auto w-2 h-2 rounded-full bg-slate-950 border border-slate-700/80 pointer-events-none" />
+            <div className="absolute inset-0 m-auto w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-slate-950 border border-slate-700/80 pointer-events-none" />
           </div>
 
-          <div className="min-w-0">
-            <h4 className="text-white font-semibold text-sm md:text-base truncate">
+          <div className="min-w-0 flex-1">
+            <h4 className="text-white font-semibold text-xs sm:text-sm md:text-base truncate">
               {title}
             </h4>
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <span className="truncate">{artist}</span>
+            <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-slate-400">
+              <span className="truncate max-w-[120px] sm:max-w-none">{artist}</span>
               <span className="text-slate-600">•</span>
               <span
-                className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold uppercase ${
+                className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-mono font-semibold uppercase ${
                   playbackMode === "8d"
                     ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/30"
                     : "bg-slate-800 text-slate-300 border border-slate-700"
                 }`}
               >
-                {playbackMode === "8d" ? "8D Spatial" : "Original Stereo"}
+                {playbackMode === "8d" ? "8D Spatial" : "Original"}
               </span>
             </div>
           </div>
@@ -270,21 +270,21 @@ export default function AudioPlayer({
           <button
             type="button"
             onClick={toggleABMode}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all shadow-sm ${
+            className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold transition-all shadow-sm ${
               playbackMode === "8d"
                 ? "bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-400/40 text-cyan-300 hover:from-cyan-500/30 hover:to-purple-500/30"
                 : "bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700"
             }`}
             title="Compare 8D Spatial Audio vs Original Track"
           >
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-            <span>A/B: {playbackMode === "8d" ? "8D ON" : "BYPASSED"}</span>
+            <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-cyan-400" />
+            <span>{playbackMode === "8d" ? "8D ON" : "BYPASS"}</span>
           </button>
         )}
       </div>
 
       {/* Progress Waveform Bar */}
-      <div className="space-y-1.5 mb-4">
+      <div className="space-y-1 mb-3 sm:mb-4">
         <div className="relative group w-full flex items-center">
           <input
             type="range"
@@ -300,7 +300,7 @@ export default function AudioPlayer({
             }}
           />
         </div>
-        <div className="flex justify-between text-[11px] font-mono text-slate-400">
+        <div className="flex justify-between text-[10px] sm:text-[11px] font-mono text-slate-400">
           <span>{formatTime(currentTime)}</span>
           <span>{formatTime(duration)}</span>
         </div>
@@ -308,49 +308,49 @@ export default function AudioPlayer({
 
       {/* Main Transport Controls */}
       <div className="flex items-center justify-between">
-        {/* Left Side Aux Buttons */}
-        <div className="flex items-center gap-2 text-slate-400">
+        {/* Left Side Aux Buttons (Shuffle/Loop) */}
+        <div className="flex items-center gap-1 sm:gap-2 text-slate-400">
           <button
             type="button"
             onClick={() => setIsShuffle(!isShuffle)}
-            className={`p-2 rounded-lg transition-colors ${
+            className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
               isShuffle ? "text-cyan-400 bg-cyan-500/10" : "hover:text-white"
             }`}
             title="Shuffle"
           >
-            <Shuffle className="w-4 h-4" />
+            <Shuffle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
           <button
             type="button"
             onClick={() => setIsLooping(!isLooping)}
-            className={`p-2 rounded-lg transition-colors ${
+            className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
               isLooping ? "text-cyan-400 bg-cyan-500/10" : "hover:text-white"
             }`}
             title="Loop Track"
           >
-            <Repeat className="w-4 h-4" />
+            <Repeat className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
         </div>
 
         {/* Center Primary Player Controls */}
-        <div className="flex items-center gap-3 md:gap-4">
+        <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
           <button
             type="button"
             onClick={onPrev}
             disabled={!onPrev}
-            className="p-2 text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="p-1.5 sm:p-2 text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             title="Previous Track"
           >
-            <SkipBack className="w-5 h-5" />
+            <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
 
           <button
             type="button"
             onClick={() => handleSkip(-10)}
-            className="p-2 text-slate-400 hover:text-white transition-colors"
+            className="p-1.5 sm:p-2 text-slate-400 hover:text-white transition-colors"
             title="Rewind 10s"
           >
-            <RotateCcw className="w-4 h-4" />
+            <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
 
           {/* Large Glowing Play/Pause Button */}
@@ -358,38 +358,38 @@ export default function AudioPlayer({
             type="button"
             onClick={togglePlay}
             disabled={!src}
-            className="w-12 h-12 md:w-14 md:h-14 flex items-center justify-center rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-600 text-white shadow-lg shadow-cyan-500/30 hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-11 h-11 sm:w-13 sm:h-13 md:w-14 md:h-14 flex items-center justify-center rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-600 text-white shadow-lg shadow-cyan-500/30 hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             title={isPlaying ? "Pause" : "Play"}
           >
             {isPlaying ? (
-              <Pause className="w-6 h-6 fill-current" />
+              <Pause className="w-5 h-5 sm:w-6 sm:h-6 fill-current" />
             ) : (
-              <Play className="w-6 h-6 fill-current ml-0.5" />
+              <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-current ml-0.5" />
             )}
           </button>
 
           <button
             type="button"
             onClick={() => handleSkip(10)}
-            className="p-2 text-slate-400 hover:text-white transition-colors"
+            className="p-1.5 sm:p-2 text-slate-400 hover:text-white transition-colors"
             title="Forward 10s"
           >
-            <RotateCcw className="w-4 h-4 scale-x-[-1]" />
+            <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4 scale-x-[-1]" />
           </button>
 
           <button
             type="button"
             onClick={onNext}
             disabled={!onNext}
-            className="p-2 text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="p-1.5 sm:p-2 text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             title="Next Track"
           >
-            <SkipForward className="w-5 h-5" />
+            <SkipForward className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
 
-        {/* Right Side Volume Slider */}
-        <div className="flex items-center gap-2 text-slate-400">
+        {/* Right Side: Mute toggle on mobile, full volume slider on desktop */}
+        <div className="flex items-center gap-1.5 sm:gap-2 text-slate-400">
           <button
             type="button"
             onClick={toggleMute}
@@ -409,7 +409,7 @@ export default function AudioPlayer({
             step="0.01"
             value={isMuted ? 0 : volume}
             onChange={handleVolumeChange}
-            className="w-16 md:w-20 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+            className="hidden sm:block w-16 md:w-20 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
           />
         </div>
       </div>
