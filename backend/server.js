@@ -4,8 +4,7 @@ const { execFile, spawn } = require("child_process");
 const { promisify } = require("util");
 const { existsSync } = require("fs");
 const path = require("path");
-const https = require("https");
-const http = require("http");
+const { Readable } = require("stream");
 
 const execFileAsync = promisify(execFile);
 const app = express();
@@ -16,10 +15,6 @@ const app = express();
 // /videoplayback?... proxies the actual audio bytes through the instance.
 const INVIDIOUS_INSTANCES = [
   "yt.chocolatemoo53.com",
-  "invidious.privacydev.net",
-  "inv.nadeko.net",
-  "invidious.perennialte.ch",
-  "iv.ggtyler.dev",
 ];
 
 // ── Helper: extract YouTube video ID ─────────────────────────────────────────
@@ -44,7 +39,7 @@ async function getInvidiousAudioInfo(videoId) {
       const apiUrl = `https://${instance}/api/v1/videos/${videoId}`;
       console.log(`[Invidious] Trying ${instance} for videoId=${videoId}`);
       const apiRes = await fetch(apiUrl, {
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(4000),
         headers: { "User-Agent": "Mozilla/5.0 (compatible; 8DAudioBot/1.0)" },
       });
       if (!apiRes.ok) {
@@ -86,51 +81,56 @@ async function getInvidiousAudioInfo(videoId) {
 }
 
 // ── Invidious: pipe proxied audio stream to Express response ──────────────────
-function pipeInvidiousStream(proxyUrl, instance, contentType, req, res) {
+async function pipeInvidiousStream(proxyUrl, instance, contentType, req, res) {
+  const headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    Referer: `https://${instance}/`,
+  };
+  if (req.headers.range) {
+    headers["Range"] = req.headers.range;
+  }
+
+  const streamRes = await fetch(proxyUrl, {
+    redirect: "follow",
+    headers,
+    signal: AbortSignal.timeout(30000),
+  });
+
+  if (streamRes.status !== 200 && streamRes.status !== 206) {
+    throw new Error(`Invidious stream returned HTTP ${streamRes.status}`);
+  }
+
+  const resType = streamRes.headers.get("content-type") || "";
+  if (
+    !resType.includes("audio") &&
+    !resType.includes("video") &&
+    !resType.includes("octet-stream")
+  ) {
+    throw new Error(`Invidious stream returned non-audio Content-Type: ${resType}`);
+  }
+
+  res.setHeader("Content-Type", resType || contentType || "audio/mp4");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  const cl = streamRes.headers.get("content-length");
+  if (cl) res.setHeader("Content-Length", cl);
+  const cr = streamRes.headers.get("content-range");
+  if (cr) res.setHeader("Content-Range", cr);
+
+  res.status(streamRes.status);
+
+  const nodeStream = Readable.fromWeb(streamRes.body);
+  nodeStream.pipe(res);
+
   return new Promise((resolve, reject) => {
-    const parsed = new URL(proxyUrl);
-    const lib = parsed.protocol === "https:" ? https : http;
-
-    const options = {
-      hostname: parsed.hostname,
-      port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
-      path: parsed.pathname + parsed.search,
-      method: "GET",
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; 8DAudioBot/1.0)",
-        Referer: `https://${instance}/`,
-        // Forward Range header if client requested partial content
-        ...(req.headers.range ? { Range: req.headers.range } : {}),
-      },
-      timeout: 30000,
-    };
-
-    const proxyReq = lib.request(options, (proxyRes) => {
-      if (proxyRes.statusCode < 200 || proxyRes.statusCode >= 400) {
-        proxyRes.resume();
-        return reject(new Error(`Invidious stream returned HTTP ${proxyRes.statusCode}`));
-      }
-      res.setHeader("Content-Type", proxyRes.headers["content-type"] || contentType);
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      if (proxyRes.headers["content-length"])
-        res.setHeader("Content-Length", proxyRes.headers["content-length"]);
-      if (proxyRes.headers["content-range"])
-        res.setHeader("Content-Range", proxyRes.headers["content-range"]);
-      res.status(proxyRes.statusCode === 206 ? 206 : 200);
-
-      proxyRes.pipe(res);
-      proxyRes.on("end", () => resolve(true));
-      proxyRes.on("error", reject);
-      req.on("close", () => proxyReq.destroy());
+    nodeStream.on("end", () => resolve(true));
+    nodeStream.on("error", (err) => {
+      console.error("[Invidious Stream Error]:", err);
+      reject(err);
     });
-
-    proxyReq.on("error", reject);
-    proxyReq.on("timeout", () => {
-      proxyReq.destroy();
-      reject(new Error("Invidious stream timed out"));
+    req.on("close", () => {
+      nodeStream.destroy();
     });
-    proxyReq.end();
   });
 }
 

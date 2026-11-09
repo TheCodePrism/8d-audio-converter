@@ -194,14 +194,46 @@ export default function AudioConverter() {
       }
 
       updateItemProgress(item.id, 45);
+      const contentType = streamRes.headers.get("content-type") || "";
       const audioBlob = await streamRes.blob();
+
+      // Guard against non-audio error payloads sent with 200 status (e.g. HTML/JSON error pages)
+      if (
+        contentType.includes("text") ||
+        contentType.includes("json") ||
+        audioBlob.size < 1024
+      ) {
+        let errMsg = "Received invalid audio response from server.";
+        try {
+          const text = await audioBlob.text();
+          try {
+            const parsed = JSON.parse(text);
+            if (parsed.error) errMsg = parsed.error;
+          } catch {
+            if (text && text.length < 300) {
+              const stripped = text.replace(/<[^>]+>/g, "").trim();
+              if (stripped) errMsg = stripped;
+            }
+          }
+        } catch {}
+        throw new Error(errMsg);
+      }
+
       const originalUrl = registerUrl(URL.createObjectURL(audioBlob));
       const arrayBuffer = await audioBlob.arrayBuffer();
 
       updateItemProgress(item.id, 65);
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       audioContext = new AudioCtx();
-      const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      let decodedBuffer: AudioBuffer;
+      try {
+        decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      } catch (decodeErr: any) {
+        console.error("AudioContext.decodeAudioData failed:", decodeErr);
+        throw new Error(
+          "Unable to decode audio data. The audio stream may be corrupt or encoded in an unsupported format."
+        );
+      }
 
       updateItemProgress(item.id, 85);
       const processedBuffer = await process8DAudio(decodedBuffer, options);
@@ -320,7 +352,15 @@ export default function AudioConverter() {
 
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       audioContext = new AudioCtx();
-      const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      let decodedBuffer: AudioBuffer;
+      try {
+        decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      } catch (decodeErr: any) {
+        console.error("AudioContext.decodeAudioData failed:", decodeErr);
+        throw new Error(
+          "Unable to decode audio data. Please ensure the file is a valid audio format (MP3, WAV, AAC, OGG)."
+        );
+      }
 
       updateItemProgress(item.id, 70);
       const processedBuffer = await process8DAudio(decodedBuffer, options);
