@@ -620,7 +620,7 @@ export default function AudioPlayer({
               Tap to live-switch acoustics
             </span>
           </div>
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:flex-wrap no-scrollbar">
             {PRESETS.map((p) => {
               const isCurrent =
                 options.rotationSpeed === p.options.rotationSpeed &&
