@@ -83,6 +83,41 @@ export default function AudioPlayer({
   const lastTitleRef = useRef(title);
   const shouldAutoPlayRef = useRef(false);
 
+  // Audio analyser for real-time music reactivity (cover art pulse, ambient aura)
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+
+  const initAudioAnalyser = () => {
+    if (typeof window === "undefined") return;
+    if (sourceNodeRef.current) {
+      if (audioContextRef.current?.state === "suspended") {
+        audioContextRef.current.resume().catch(() => {});
+      }
+      return;
+    }
+    const audio = audioRef.current;
+    if (!audio) return;
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 128;
+      analyser.smoothingTimeConstant = 0.7;
+      const source = ctx.createMediaElementSource(audio);
+      source.connect(analyser);
+      analyser.connect(ctx.destination);
+      audioContextRef.current = ctx;
+      analyserRef.current = analyser;
+      sourceNodeRef.current = source;
+    } catch (err) {
+      console.warn("Audio analyser setup error:", err);
+    }
+  };
+
   const handleCopyLink = async (url: string) => {
     try {
       if (onCopySourceUrl) {
@@ -171,6 +206,10 @@ export default function AudioPlayer({
 
     if (shouldAutoPlayRef.current || isPlayingRef.current) {
       shouldAutoPlayRef.current = false;
+      initAudioAnalyser();
+      if (audioContextRef.current?.state === "suspended") {
+        audioContextRef.current.resume().catch(() => {});
+      }
       audio.play().catch((err) => {
         console.warn("Playback or autoplay restriction:", err);
       });
@@ -191,6 +230,10 @@ export default function AudioPlayer({
     };
 
     const handlePlay = () => {
+      initAudioAnalyser();
+      if (audioContextRef.current?.state === "suspended") {
+        audioContextRef.current.resume().catch(() => {});
+      }
       setIsPlaying(true);
       if (onPlayStateChange) onPlayStateChange(true);
     };
@@ -262,6 +305,10 @@ export default function AudioPlayer({
       });
 
       navigator.mediaSession.setActionHandler("play", () => {
+        initAudioAnalyser();
+        if (audioContextRef.current?.state === "suspended") {
+          audioContextRef.current.resume().catch(() => {});
+        }
         audioRef.current?.play().catch(() => {});
       });
 
@@ -323,6 +370,10 @@ export default function AudioPlayer({
     if (!audio) return;
 
     try {
+      initAudioAnalyser();
+      if (audioContextRef.current?.state === "suspended") {
+        await audioContextRef.current.resume();
+      }
       if (audio.paused) {
         await audio.play();
       } else {
@@ -366,7 +417,7 @@ export default function AudioPlayer({
 
   return (
     <div className="flex flex-col space-y-4">
-      <audio ref={audioRef} preload="metadata" />
+      <audio ref={audioRef} preload="metadata" crossOrigin="anonymous" />
 
       {/* ── 1. The Cover Image with Transparent 360°/16D Orbit Radar Overlay ── */}
       <div className="w-full flex justify-center pt-1 pb-1">
@@ -378,6 +429,7 @@ export default function AudioPlayer({
           title={title}
           artist={artist}
           is8DReady={is8DReady}
+          analyserRef={analyserRef}
         />
       </div>
 
