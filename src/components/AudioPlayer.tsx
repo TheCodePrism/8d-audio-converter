@@ -14,6 +14,9 @@ import {
   Shuffle,
   Headphones,
   Sparkles,
+  Youtube,
+  Copy,
+  Check,
 } from "lucide-react";
 
 interface AudioPlayerProps {
@@ -22,6 +25,8 @@ interface AudioPlayerProps {
   title?: string;
   artist?: string;
   thumbnail?: string;
+  sourceUrl?: string;
+  onCopySourceUrl?: (url: string) => void;
   is8DReady?: boolean;
   onTimeUpdate?: (currentTime: number) => void;
   onPlayStateChange?: (isPlaying: boolean) => void;
@@ -39,6 +44,8 @@ export default function AudioPlayer({
   title = "Untitled Track",
   artist = "8D Audio Studio",
   thumbnail,
+  sourceUrl,
+  onCopySourceUrl,
   is8DReady = false,
   onTimeUpdate,
   onPlayStateChange,
@@ -56,6 +63,21 @@ export default function AudioPlayer({
   const [volume, setVolume] = useState(1);
   const [internalLooping, setInternalLooping] = useState(false);
   const [internalShuffle, setInternalShuffle] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const handleCopyLink = async (url: string) => {
+    try {
+      if (onCopySourceUrl) {
+        onCopySourceUrl(url);
+      } else {
+        await navigator.clipboard.writeText(url);
+      }
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    } catch {
+      // ignore
+    }
+  };
 
   const isShuffle = propIsShuffle !== undefined ? propIsShuffle : internalShuffle;
   const isLooping = propIsLooping !== undefined ? propIsLooping : internalLooping;
@@ -366,24 +388,53 @@ export default function AudioPlayer({
           </div>
         </div>
 
-        {/* Live A/B Comparison Pill */}
-        {originalSrc && is8DReady && (
-          <button
-            type="button"
-            onClick={() =>
-              setPlaybackMode((prev) => (prev === "8d" ? "original" : "8d"))
-            }
-            className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] font-mono font-semibold transition-all flex items-center gap-1.5 border shrink-0 ${
-              playbackMode === "8d"
-                ? "bg-cyan-500/15 border-cyan-400/60 text-cyan-300 shadow-sm shadow-cyan-500/20"
-                : "bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200"
-            }`}
-            title="Toggle between 8D Spatial Audio and Original Stereo Audio"
-          >
-            <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-cyan-400" />
-            <span>{playbackMode === "8d" ? "8D ON" : "BYPASS"}</span>
-          </button>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Copy YouTube Link Pill */}
+          {sourceUrl && (
+            <button
+              type="button"
+              onClick={() => handleCopyLink(sourceUrl)}
+              className={`px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition-all flex items-center gap-1.5 border shrink-0 ${
+                copiedLink
+                  ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-300"
+                  : "bg-slate-900 border-slate-700 hover:border-red-500/50 text-slate-300 hover:text-red-400"
+              }`}
+              title={copiedLink ? "Copied to clipboard!" : "Copy YouTube link"}
+            >
+              {copiedLink ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="font-mono">Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Youtube className="w-3.5 h-3.5 text-red-500" />
+                  <span className="hidden sm:inline">YouTube</span>
+                  <Copy className="w-3 h-3 opacity-60" />
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Live A/B Comparison Pill */}
+          {originalSrc && is8DReady && (
+            <button
+              type="button"
+              onClick={() =>
+                setPlaybackMode((prev) => (prev === "8d" ? "original" : "8d"))
+              }
+              className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] font-mono font-semibold transition-all flex items-center gap-1.5 border shrink-0 ${
+                playbackMode === "8d"
+                  ? "bg-cyan-500/15 border-cyan-400/60 text-cyan-300 shadow-sm shadow-cyan-500/20"
+                  : "bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200"
+              }`}
+              title="Toggle between 8D Spatial Audio and Original Stereo Audio"
+            >
+              <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-cyan-400" />
+              <span>{playbackMode === "8d" ? "8D ON" : "BYPASS"}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Progress Waveform Bar */}

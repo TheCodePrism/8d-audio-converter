@@ -15,6 +15,8 @@ export interface SavedTrackRecord {
   blob: Blob;
   savedAt: number;
   options?: AudioProcessingOptions;
+  sourceType?: "upload" | "youtube" | "demo";
+  sourceUrl?: string;
 }
 
 // ── IndexedDB Helpers ─────────────────────────────────────────────────────────
@@ -56,6 +58,8 @@ export async function saveTrackToStorage(
       size: audioBlob.size,
       blob: audioBlob,
       savedAt: Date.now(),
+      sourceType: item.sourceType,
+      sourceUrl: item.sourceUrl,
     };
 
     const req = store.put(record);
@@ -148,6 +152,8 @@ interface PackManifestItem {
   thumbnail?: string;
   byteLength: number;
   options?: AudioProcessingOptions;
+  sourceType?: "upload" | "youtube" | "demo";
+  sourceUrl?: string;
 }
 
 export async function exportTracksToPackFile(
@@ -164,6 +170,8 @@ export async function exportTracksToPackFile(
     artist: item.artist,
     thumbnail: item.thumbnail,
     byteLength: blob.size,
+    sourceType: item.sourceType,
+    sourceUrl: item.sourceUrl,
   }));
 
   const manifestJson = JSON.stringify(manifest);
@@ -247,7 +255,8 @@ export async function importTracksFromPackFile(
       convertedUrl: "", // will be assigned ObjectURL when registered
       status: "complete",
       progress: 100,
-      sourceType: "upload",
+      sourceType: entry.sourceType || "upload",
+      sourceUrl: entry.sourceUrl,
       addedAt: Date.now(),
     };
 
