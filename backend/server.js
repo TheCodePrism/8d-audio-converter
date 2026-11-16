@@ -37,29 +37,31 @@ function extractVideoId(urlStr) {
   }
 }
 
-// ── Invidious: fetch audio info for a videoId ─────────────────────────────────
-// Returns { proxyUrl, contentType, instance } or null if all instances fail.
+// ── Invidious: parallel fastest-success fetch for a videoId ─────────────────────
+// Races all Invidious instances in parallel; returns the first one that successfully
+// responds with valid audio format streams, immediately aborting the remaining ones.
 async function getInvidiousAudioInfo(videoId) {
-  for (const instance of INVIDIOUS_INSTANCES) {
+  const controller = new AbortController();
+  const overallTimeout = setTimeout(() => controller.abort(), 7000);
+
+  const fetchInstance = async (instance) => {
+    const apiUrl = `https://${instance}/api/v1/videos/${videoId}`;
+    const start = Date.now();
     try {
-      const apiUrl = `https://${instance}/api/v1/videos/${videoId}`;
-      console.log(`[Invidious] Trying ${instance} for videoId=${videoId}`);
       const apiRes = await fetch(apiUrl, {
-        signal: AbortSignal.timeout(4000),
+        signal: controller.signal,
         headers: { "User-Agent": "Mozilla/5.0 (compatible; 8DAudioBot/1.0)" },
       });
       if (!apiRes.ok) {
-        console.warn(`[Invidious] ${instance} API returned ${apiRes.status}`);
-        continue;
+        throw new Error(`${instance} returned HTTP ${apiRes.status} (${Date.now() - start}ms)`);
       }
       const data = await apiRes.json();
       if (data.error) {
-        console.warn(`[Invidious] ${instance} returned error: ${data.error}`);
-        continue;
+        throw new Error(`${instance} returned error: ${data.error} (${Date.now() - start}ms)`);
       }
 
       const formats = data.adaptiveFormats || [];
-      // Prefer itag 140 (m4a 128kbps), then 251 (opus), then any audio
+      // Prefer itag 140 (m4a 128kbps), then 251 (opus), then any audio format
       const preferredItags = ["140", "251", "250", "249", "139"];
       let audio = preferredItags
         .map((itag) => formats.find((f) => String(f.itag) === itag && f.url))
@@ -68,22 +70,45 @@ async function getInvidiousAudioInfo(videoId) {
         audio = formats.find((f) => f.type?.startsWith("audio/") && f.url);
       }
       if (!audio?.url) {
-        console.warn(`[Invidious] ${instance} has no usable audio format`);
-        continue;
+        throw new Error(`${instance} has no usable audio format (${Date.now() - start}ms)`);
       }
 
-      // Build the Invidious proxy URL from the query string of the googlevideo URL
       const audioUrl = new URL(audio.url);
       const proxyUrl = `https://${instance}/videoplayback${audioUrl.search}`;
       const contentType = audio.type?.split(";")[0] || "audio/mp4";
 
-      console.log(`[Invidious] ✓ ${instance} audio itag=${audio.itag} type=${contentType}`);
-      return { proxyUrl, contentType, instance };
-    } catch (e) {
-      console.warn(`[Invidious] ${instance} failed: ${e.message}`);
+      return {
+        proxyUrl,
+        contentType,
+        instance,
+        itag: audio.itag,
+        elapsedMs: Date.now() - start,
+      };
+    } catch (err) {
+      if (err.name === "AbortError") {
+        throw err;
+      }
+      throw err;
     }
+  };
+
+  try {
+    console.log(`[Invidious] Racing ${INVIDIOUS_INSTANCES.length} instances in parallel for videoId=${videoId}...`);
+    const winner = await Promise.any(
+      INVIDIOUS_INSTANCES.map((instance) => fetchInstance(instance))
+    );
+    clearTimeout(overallTimeout);
+    controller.abort(); // Cancel all slower in-flight requests immediately
+
+    console.log(
+      `[Invidious] ✓ Fastest instance won: ${winner.instance} in ${winner.elapsedMs}ms (itag=${winner.itag}, type=${winner.contentType})`
+    );
+    return winner;
+  } catch (err) {
+    clearTimeout(overallTimeout);
+    console.warn(`[Invidious] All parallel instances failed or timed out for videoId=${videoId}.`);
+    return null;
   }
-  return null;
 }
 
 // ── Invidious: pipe proxied audio stream to Express response ──────────────────
@@ -321,25 +346,23 @@ app.post("/admin/probe", async (req, res) => {
 
   let invidiousResult = null;
   if (videoId) {
-    logs.push(`[${new Date().toISOString()}] Testing Invidious proxy chain...`);
-    for (const instance of INVIDIOUS_INSTANCES) {
+    logs.push(`[${new Date().toISOString()}] Racing ${INVIDIOUS_INSTANCES.length} Invidious instances in parallel...`);
+
+    const probePromises = INVIDIOUS_INSTANCES.map(async (instance) => {
       const instStart = Date.now();
       try {
         const apiUrl = `https://${instance}/api/v1/videos/${videoId}`;
-        logs.push(`[${new Date().toISOString()}] Probing ${instance}...`);
         const apiRes = await fetch(apiUrl, {
-          signal: AbortSignal.timeout(5000),
+          signal: AbortSignal.timeout(6000),
           headers: { "User-Agent": "Mozilla/5.0 (compatible; 8DAudioAdminBot/1.0)" },
         });
         const elapsed = Date.now() - instStart;
         if (!apiRes.ok) {
-          logs.push(`[${new Date().toISOString()}] ✕ ${instance} returned HTTP ${apiRes.status} (${elapsed}ms)`);
-          continue;
+          return { success: false, instance, status: apiRes.status, elapsed, error: `HTTP ${apiRes.status}` };
         }
         const data = await apiRes.json();
         if (data.error) {
-          logs.push(`[${new Date().toISOString()}] ✕ ${instance} error: ${data.error} (${elapsed}ms)`);
-          continue;
+          return { success: false, instance, status: apiRes.status, elapsed, error: data.error };
         }
         const formats = data.adaptiveFormats || [];
         const preferredItags = ["140", "251", "250", "249", "139"];
@@ -348,11 +371,11 @@ app.post("/admin/probe", async (req, res) => {
           .find(Boolean) || formats.find((f) => f.type?.startsWith("audio/") && f.url);
 
         if (audio) {
-          logs.push(
-            `[${new Date().toISOString()}] ✓ ${instance} available! Audio itag=${audio.itag}, type=${audio.type}, bitrate=${audio.bitrate || "unknown"} (${elapsed}ms)`
-          );
-          invidiousResult = {
+          return {
+            success: true,
             instance,
+            status: 200,
+            elapsed,
             itag: audio.itag,
             type: audio.type,
             title: data.title,
@@ -360,13 +383,38 @@ app.post("/admin/probe", async (req, res) => {
             duration: data.lengthSeconds,
             proxyUrl: `https://${instance}/videoplayback${new URL(audio.url).search}`,
           };
-          break;
-        } else {
-          logs.push(`[${new Date().toISOString()}] ✕ ${instance} no suitable audio format found (${elapsed}ms)`);
         }
+        return { success: false, instance, status: 200, elapsed, error: "No usable audio stream format" };
       } catch (e) {
-        logs.push(`[${new Date().toISOString()}] ✕ ${instance} exception: ${e.message}`);
+        return { success: false, instance, status: 0, elapsed: Date.now() - instStart, error: e.message };
       }
+    });
+
+    const results = await Promise.allSettled(probePromises);
+    const resolved = results.map((r) => r.value);
+
+    // Sort by elapsed time to find the fastest successful one
+    const successful = resolved
+      .filter((r) => r && r.success)
+      .sort((a, b) => a.elapsed - b.elapsed);
+
+    resolved.forEach((r) => {
+      if (r.success) {
+        logs.push(
+          `[${new Date().toISOString()}] ✓ ${r.instance} responded in ${r.elapsed}ms (itag=${r.itag}, type=${r.type})`
+        );
+      } else {
+        logs.push(
+          `[${new Date().toISOString()}] ✕ ${r.instance} failed in ${r.elapsed}ms (${r.error})`
+        );
+      }
+    });
+
+    if (successful.length > 0) {
+      invidiousResult = successful[0];
+      logs.push(
+        `[${new Date().toISOString()}] 🏆 Fastest Winning Mirror: ${invidiousResult.instance} (${invidiousResult.elapsed}ms)`
+      );
     }
   }
 
