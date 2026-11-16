@@ -42,6 +42,7 @@ import {
   PRESETS,
   process8DAudio,
   float32ToWav,
+  audioBufferToMp3,
   generateDemoAudioBuffer,
 } from "@/lib/audioProcessing";
 import {
@@ -236,7 +237,7 @@ export default function AudioConverter() {
 
         updateItemProgress(item.id, 85);
         const processedBuffer = await process8DAudio(decodedBuffer, options);
-        const wavBlob = float32ToWav(processedBuffer);
+        const wavBlob = audioBufferToMp3(processedBuffer);
         const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
         wavBlobsRef.current.set(item.id, wavBlob);
 
@@ -495,7 +496,7 @@ export default function AudioConverter() {
 
       try {
         const processedBuffer = await process8DAudio(target.rawBuffer, opts);
-        const wavBlob = float32ToWav(processedBuffer);
+        const wavBlob = audioBufferToMp3(processedBuffer);
         const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
         wavBlobsRef.current.set(target.id, wavBlob);
         saveTrackToStorage(target, wavBlob)
@@ -734,7 +735,7 @@ export default function AudioConverter() {
       const link = document.createElement("a");
       link.href = convertedUrl;
       const cleanTitle = title.replace(/[^a-zA-Z0-9_-]/g, "_");
-      link.download = `${cleanTitle}_8D_Spatial.wav`;
+      link.download = `${cleanTitle}_8D_Spatial.mp3`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

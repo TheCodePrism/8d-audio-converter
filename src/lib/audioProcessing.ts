@@ -1,4 +1,5 @@
 import { AudioProcessingOptions, Preset } from "@/types";
+import { Mp3Encoder } from "lamejs";
 
 export const DEFAULT_OPTIONS: AudioProcessingOptions = {
   rotationSpeed: 12, // 12 seconds per full revolution
@@ -478,6 +479,61 @@ export function generateDemoAudioBuffer(sampleRate = 44100, duration = 16): Audi
   }
 
   return buffer;
+}
+
+/**
+ * Encodes an AudioBuffer to a compressed MP3 Blob using lamejs.
+ *
+ * Why MP3 instead of WAV?
+ *   WAV is uncompressed PCM: a 4-min stereo 44 100 Hz track = ~42 MB
+ *   MP3 at 192 kbps: same track = ~5.5 MB  (≈ 7× smaller)
+ *   Even a 10-minute song stays well under 15 MB.
+ *
+ * @param audioBuffer  The processed AudioBuffer to encode
+ * @param kbps         Target bitrate (default 192 kbps — transparent quality)
+ * @returns            A Blob of type "audio/mpeg"
+ */
+export function audioBufferToMp3(audioBuffer: AudioBuffer, kbps = 192): Blob {
+  const numChannels = audioBuffer.numberOfChannels;
+  const sampleRate = audioBuffer.sampleRate;
+  const length = audioBuffer.length;
+
+  // lamejs requires Int16 samples in the range [-32768, 32767]
+  const toInt16 = (floatSamples: Float32Array): Int16Array => {
+    const int16 = new Int16Array(floatSamples.length);
+    for (let i = 0; i < floatSamples.length; i++) {
+      let s = floatSamples[i];
+      if (s > 1) s = 1;
+      else if (s < -1) s = -1;
+      int16[i] = s < 0 ? (s * 0x8000) | 0 : (s * 0x7fff) | 0;
+    }
+    return int16;
+  };
+
+  const leftRaw = audioBuffer.getChannelData(0);
+  // For mono files route the same channel into both L and R
+  const rightRaw = numChannels > 1 ? audioBuffer.getChannelData(1) : leftRaw;
+
+  const leftInt16 = toInt16(leftRaw);
+  const rightInt16 = numChannels > 1 ? toInt16(rightRaw) : leftInt16;
+
+  const encoder = new Mp3Encoder(2, sampleRate, kbps);
+  const mp3Parts: Int8Array[] = [];
+
+  // lamejs requires block sizes that are multiples of 576
+  const BLOCK = 1152;
+
+  for (let offset = 0; offset < length; offset += BLOCK) {
+    const leftChunk = leftInt16.subarray(offset, offset + BLOCK);
+    const rightChunk = rightInt16.subarray(offset, offset + BLOCK);
+    const encoded = encoder.encodeBuffer(leftChunk, rightChunk);
+    if (encoded.length > 0) mp3Parts.push(encoded);
+  }
+
+  const flushed = encoder.flush();
+  if (flushed.length > 0) mp3Parts.push(flushed);
+
+  return new Blob(mp3Parts, { type: "audio/mpeg" });
 }
 
 
