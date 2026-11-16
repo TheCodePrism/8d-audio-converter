@@ -1,5 +1,5 @@
 import { AudioProcessingOptions, Preset } from "@/types";
-import { Mp3Encoder } from "lamejs";
+import { Mp3Encoder } from "@breezystack/lamejs";
 
 export const DEFAULT_OPTIONS: AudioProcessingOptions = {
   rotationSpeed: 12, // 12 seconds per full revolution
@@ -519,7 +519,7 @@ export function audioBufferToMp3(audioBuffer: AudioBuffer, kbps = 192): Blob {
   const rightInt16 = numChannels > 1 ? toInt16(rightRaw) : leftInt16;
 
   const encoder = new Mp3Encoder(2, sampleRate, kbps);
-  const mp3Parts: Int8Array[] = [];
+  const mp3Parts: Uint8Array[] = [];
 
   // lamejs requires block sizes that are multiples of 576
   const BLOCK = 1152;

@@ -90,18 +90,57 @@ export default function AudioConverter() {
   const isProcessingQueueRef = useRef<boolean>(false);
   const packFileInputRef = useRef<HTMLInputElement>(null);
 
+  const registerUrl = useCallback((url: string) => {
+    createdUrlsRef.current.push(url);
+    return url;
+  }, []);
+
   const refreshSavedLibrary = useCallback(async () => {
     try {
       const tracks = await getSavedTracks();
       setSavedLibrary(tracks);
+      return tracks;
     } catch (err) {
       console.warn("Could not retrieve saved library:", err);
+      return [];
     }
   }, []);
 
+  // Auto-restore saved tracks from IndexedDB into Queue on page load / refresh
   useEffect(() => {
-    refreshSavedLibrary();
-  }, [refreshSavedLibrary]);
+    let isMounted = true;
+    getSavedTracks().then((tracks) => {
+      if (!isMounted || !tracks || tracks.length === 0) return;
+      setSavedLibrary(tracks);
+      setAudioFiles((prev) => {
+        // If queue already has tracks loaded, do not overwrite
+        if (prev.length > 0) return prev;
+        return tracks.map((record) => {
+          const audioUrl = registerUrl(URL.createObjectURL(record.blob));
+          wavBlobsRef.current.set(record.id, record.blob);
+          return {
+            id: record.id,
+            name: record.name,
+            artist: record.artist || "8D Audio Master",
+            thumbnail: record.thumbnail,
+            size: record.size,
+            originalUrl: audioUrl,
+            convertedUrl: audioUrl,
+            status: "complete",
+            progress: 100,
+            sourceType: "upload",
+            addedAt: record.savedAt,
+          };
+        });
+      });
+    }).catch((err) => {
+      console.warn("Could not auto-restore saved tracks on mount:", err);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [registerUrl]);
 
   useEffect(() => {
     const urls = createdUrlsRef.current;
@@ -112,11 +151,6 @@ export default function AudioConverter() {
         } catch {}
       });
     };
-  }, []);
-
-  const registerUrl = useCallback((url: string) => {
-    createdUrlsRef.current.push(url);
-    return url;
   }, []);
 
   const validateFile = (file: File): string | null => {
@@ -672,6 +706,7 @@ export default function AudioConverter() {
     try {
       await deleteSavedTrack(id);
       await refreshSavedLibrary();
+      setAudioFiles((prev) => prev.filter((f) => f.id !== id));
     } catch (err: any) {
       setError(`Could not remove track: ${err?.message}`);
     }
@@ -753,6 +788,9 @@ export default function AudioConverter() {
       if (target) {
         if (target.originalUrl) URL.revokeObjectURL(target.originalUrl);
         if (target.convertedUrl) URL.revokeObjectURL(target.convertedUrl);
+        deleteSavedTrack(target.id)
+          .then(() => refreshSavedLibrary())
+          .catch(() => {});
       }
       return prev.filter((_, i) => i !== index);
     });
@@ -1074,9 +1112,11 @@ export default function AudioConverter() {
                       <span className="text-slate-700">•</span>
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
                           setAudioFiles([]);
                           setCurrentTrackIndex(0);
+                          await clearAllSavedTracks();
+                          await refreshSavedLibrary();
                         }}
                         className="text-xs text-slate-500 hover:text-red-400 transition-colors"
                       >
