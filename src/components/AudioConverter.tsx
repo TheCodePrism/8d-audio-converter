@@ -99,6 +99,7 @@ export default function AudioConverter() {
   const packFileInputRef = useRef<HTMLInputElement>(null);
   const isHydratedRef = useRef<boolean>(false);
   const wakeLockRef = useRef<any>(null);
+  const hasNewSuccessRef = useRef<boolean>(false);
 
   const registerUrl = useCallback((url: string) => {
     createdUrlsRef.current.push(url);
@@ -289,11 +290,20 @@ export default function AudioConverter() {
     return null;
   };
 
-  const updateItemProgress = useCallback((id: string, percent: number) => {
-    setAudioFiles((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, progress: percent } : f))
-    );
-  }, []);
+  const updateItemProgress = useCallback(
+    (id: string, percent: number, stage?: string) => {
+      setAudioFiles((prev) =>
+        prev.map((f) =>
+          f.id === id
+            ? { ...f, progress: percent, ...(stage ? { stage } : {}) }
+            : f
+        )
+      );
+    },
+    []
+  );
+
+  const CONVERSION_TIMEOUT_MS = 55000; // 55 seconds timeout to prevent stalled conversions
 
   // --- Queue Worker Core Processing ---
   const processQueueItem = useCallback(
@@ -301,138 +311,181 @@ export default function AudioConverter() {
       setAudioFiles((prev) =>
         prev.map((f) =>
           f.id === item.id
-            ? { ...f, status: "converting", progress: 15, error: undefined, errorDetails: undefined }
+            ? {
+                ...f,
+                status: "converting",
+                progress: 10,
+                stage: "Initializing conversion...",
+                error: undefined,
+                errorDetails: undefined,
+              }
             : f
         )
       );
 
-      let audioContext: AudioContext | null = null;
+      let audioContext: any = null;
+      let timeoutTimer: NodeJS.Timeout | null = null;
+      const abortController = new AbortController();
+
       try {
-        let decodedBuffer: AudioBuffer;
-        let originalUrl = item.originalUrl;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutTimer = setTimeout(() => {
+            abortController.abort();
+            reject(
+              new Error(
+                "Conversion timed out (stalled for >55s). Moved to retry queue."
+              )
+            );
+          }, CONVERSION_TIMEOUT_MS);
+        });
 
-        if (item.sourceType === "upload" && item.file) {
-          updateItemProgress(item.id, 30);
-          const validationError = validateFile(item.file);
-          if (validationError) throw new Error(validationError);
+        const doConversion = async () => {
+          let decodedBuffer: AudioBuffer;
+          let originalUrl = item.originalUrl;
 
-          const arrayBuffer = await item.file.arrayBuffer();
-          updateItemProgress(item.id, 50);
+          if (item.sourceType === "upload" && item.file) {
+            updateItemProgress(item.id, 20, "Reading local audio file...");
+            const validationError = validateFile(item.file);
+            if (validationError) throw new Error(validationError);
 
-          const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-          audioContext = new AudioCtx();
-          decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
-        } else if (item.sourceType === "youtube") {
-          updateItemProgress(item.id, 25);
-          const ytUrl = item.sourceUrl || item.originalUrl;
-          if (!ytUrl) throw new Error("Missing YouTube source URL.");
+            const arrayBuffer = await item.file.arrayBuffer();
+            updateItemProgress(item.id, 45, "Decoding audio waveform (PCM)...");
 
-          const streamRes = await fetch(
-            `/api/youtube/stream?url=${encodeURIComponent(ytUrl)}`
+            const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+            audioContext = new AudioCtx();
+            decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
+          } else if (item.sourceType === "youtube") {
+            updateItemProgress(item.id, 20, "Connecting to audio stream...");
+            const ytUrl = item.sourceUrl || item.originalUrl;
+            if (!ytUrl) throw new Error("Missing YouTube source URL.");
+
+            const streamRes = await fetch(
+              `/api/youtube/stream?url=${encodeURIComponent(ytUrl)}`,
+              { signal: abortController.signal }
+            );
+
+            if (!streamRes.ok) {
+              let errMsg = "Failed to download YouTube audio stream.";
+              try {
+                const text = await streamRes.text();
+                try {
+                  const parsed = JSON.parse(text);
+                  if (parsed.error) errMsg = parsed.error;
+                } catch {
+                  if (text && text.length < 200) errMsg = text;
+                }
+              } catch {}
+              throw new Error(errMsg);
+            }
+
+            updateItemProgress(item.id, 40, "Downloading audio stream chunks...");
+            const contentType = streamRes.headers.get("content-type") || "";
+            const audioBlob = await streamRes.blob();
+
+            if (
+              contentType.includes("text") ||
+              contentType.includes("json") ||
+              audioBlob.size < 1024
+            ) {
+              let errMsg = "Received invalid audio response from server.";
+              try {
+                const text = await audioBlob.text();
+                try {
+                  const parsed = JSON.parse(text);
+                  if (parsed.error) errMsg = parsed.error;
+                } catch {
+                  if (text && text.length < 300) {
+                    const stripped = text.replace(/<[^>]+>/g, "").trim();
+                    if (stripped) errMsg = stripped;
+                  }
+                }
+              } catch {}
+              throw new Error(errMsg);
+            }
+
+            originalUrl = registerUrl(URL.createObjectURL(audioBlob));
+            const arrayBuffer = await audioBlob.arrayBuffer();
+
+            updateItemProgress(item.id, 60, "Decoding audio waveform (PCM)...");
+            const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+            audioContext = new AudioCtx();
+            try {
+              decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            } catch (decodeErr: any) {
+              throw new Error(
+                "Unable to decode audio data. The audio stream may be corrupt or encoded in an unsupported format."
+              );
+            }
+          } else if (item.sourceType === "demo") {
+            updateItemProgress(item.id, 40, "Synthesizing demo audio...");
+            decodedBuffer = generateDemoAudioBuffer(44100, 16);
+            const rawWavBlob = float32ToWav(decodedBuffer);
+            originalUrl = registerUrl(URL.createObjectURL(rawWavBlob));
+          } else {
+            throw new Error("Unknown source type for conversion.");
+          }
+
+          updateItemProgress(item.id, 75, "Rendering 360° HRTF & spatial reverb...");
+          const processedBuffer = await process8DAudio(decodedBuffer, options);
+          const bitrate = options.exportQuality === "320" ? 320 : 192;
+
+          updateItemProgress(item.id, 85, `Mastering studio MP3 (${bitrate} kbps)...`);
+          const wavBlob = await audioBufferToMp3(processedBuffer, bitrate, (pct) =>
+            updateItemProgress(
+              item.id,
+              pct,
+              `Mastering studio MP3 (${pct}%)...`
+            )
+          );
+          const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
+          wavBlobsRef.current.set(item.id, wavBlob);
+
+          // Auto-save to persistent browser storage so tracks survive page reloads
+          saveTrackToStorage(item, wavBlob)
+            .then(() => refreshSavedLibrary())
+            .catch((e) => console.warn("Auto-save to storage failed:", e));
+
+          setAudioFiles((prev) =>
+            prev.map((f) =>
+              f.id === item.id
+                ? {
+                    ...f,
+                    originalUrl,
+                    convertedUrl,
+                    status: "complete",
+                    progress: 100,
+                    stage: "8D Spatial Master Ready",
+                    size: wavBlob.size,
+                    rawBuffer: decodedBuffer,
+                  }
+                : f
+            )
           );
 
-          if (!streamRes.ok) {
-            let errMsg = "Failed to download YouTube audio stream.";
-            try {
-              const text = await streamRes.text();
-              try {
-                const parsed = JSON.parse(text);
-                if (parsed.error) errMsg = parsed.error;
-              } catch {
-                if (text && text.length < 200) errMsg = text;
-              }
-            } catch {}
-            throw new Error(errMsg);
-          }
+          // Flag that a track succeeded so the retry queue can interleave failed tracks next!
+          hasNewSuccessRef.current = true;
+        };
 
-          updateItemProgress(item.id, 45);
-          const contentType = streamRes.headers.get("content-type") || "";
-          const audioBlob = await streamRes.blob();
-
-          if (
-            contentType.includes("text") ||
-            contentType.includes("json") ||
-            audioBlob.size < 1024
-          ) {
-            let errMsg = "Received invalid audio response from server.";
-            try {
-              const text = await audioBlob.text();
-              try {
-                const parsed = JSON.parse(text);
-                if (parsed.error) errMsg = parsed.error;
-              } catch {
-                if (text && text.length < 300) {
-                  const stripped = text.replace(/<[^>]+>/g, "").trim();
-                  if (stripped) errMsg = stripped;
-                }
-              }
-            } catch {}
-            throw new Error(errMsg);
-          }
-
-          originalUrl = registerUrl(URL.createObjectURL(audioBlob));
-          const arrayBuffer = await audioBlob.arrayBuffer();
-
-          updateItemProgress(item.id, 65);
-          const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-          audioContext = new AudioCtx();
-          try {
-            decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
-          } catch (decodeErr: any) {
-            throw new Error(
-              "Unable to decode audio data. The audio stream may be corrupt or encoded in an unsupported format."
-            );
-          }
-        } else if (item.sourceType === "demo") {
-          updateItemProgress(item.id, 40);
-          decodedBuffer = generateDemoAudioBuffer(44100, 16);
-          const rawWavBlob = float32ToWav(decodedBuffer);
-          originalUrl = registerUrl(URL.createObjectURL(rawWavBlob));
-        } else {
-          throw new Error("Unknown source type for conversion.");
-        }
-
-        updateItemProgress(item.id, 85);
-        const processedBuffer = await process8DAudio(decodedBuffer, options);
-        const bitrate = options.exportQuality === "320" ? 320 : 192;
-        const wavBlob = await audioBufferToMp3(processedBuffer, bitrate, (pct) =>
-          updateItemProgress(item.id, pct)
-        );
-        const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
-        wavBlobsRef.current.set(item.id, wavBlob);
-
-        // Auto-save to persistent browser storage so tracks survive page reloads
-        saveTrackToStorage(item, wavBlob)
-          .then(() => refreshSavedLibrary())
-          .catch((e) => console.warn("Auto-save to storage failed:", e));
-
-        setAudioFiles((prev) =>
-          prev.map((f) =>
-            f.id === item.id
-              ? {
-                  ...f,
-                  originalUrl,
-                  convertedUrl,
-                  status: "complete",
-                  progress: 100,
-                  size: wavBlob.size,
-                  rawBuffer: decodedBuffer,
-                }
-              : f
-          )
-        );
+        await Promise.race([doConversion(), timeoutPromise]);
       } catch (err: any) {
         console.error("Conversion error for track:", item.name, err);
         const msg = err?.message || "Audio conversion failed.";
         setAudioFiles((prev) =>
           prev.map((f) =>
             f.id === item.id
-              ? { ...f, status: "error", error: msg, errorDetails: String(err?.stack || err) }
+              ? {
+                  ...f,
+                  status: "error",
+                  error: msg,
+                  errorDetails: String(err?.stack || err),
+                  stage: "Failed",
+                }
               : f
           )
         );
         setError(`Failed converting "${item.name}": ${msg}`);
       } finally {
+        if (timeoutTimer) clearTimeout(timeoutTimer);
         if (audioContext && audioContext.state !== "closed") {
           try {
             await audioContext.close();
@@ -446,14 +499,46 @@ export default function AudioConverter() {
   const MAX_AUTO_RETRIES = 2;
 
   // Background Queue Runner: automatically detects next pending track,
-  // and once all other tracks in the list are processed, automatically retries failed ones.
+  // interleaves retries of failed tracks right after a successful one,
+  // and finishes any remaining failed tracks after the list completes.
   useEffect(() => {
     if (isProcessingQueueRef.current) return;
 
     const isAnyConverting = audioFiles.some((f) => f.status === "converting");
     if (isAnyConverting) return;
 
-    // 1. Process standard pending tracks first
+    // 1. If a track just succeeded, check if there is a failed track in the retry queue
+    // that should be retried now (interleaved retry right after success!)
+    if (hasNewSuccessRef.current) {
+      hasNewSuccessRef.current = false;
+      const retryCandidate = audioFiles.find(
+        (f) => f.status === "error" && (f.retryCount || 0) < MAX_AUTO_RETRIES
+      );
+      if (retryCandidate) {
+        const nextAttempt = (retryCandidate.retryCount || 0) + 1;
+        console.log(
+          `[Interleaved Retry] Automatically re-trying "${retryCandidate.name}" after a successful track (attempt ${nextAttempt}/${MAX_AUTO_RETRIES})...`
+        );
+        setAudioFiles((prev) =>
+          prev.map((f) =>
+            f.id === retryCandidate.id
+              ? {
+                  ...f,
+                  status: "pending",
+                  progress: 0,
+                  stage: "Retrying after successful track...",
+                  retryCount: nextAttempt,
+                  error: undefined,
+                  errorDetails: undefined,
+                }
+              : f
+          )
+        );
+        return;
+      }
+    }
+
+    // 2. Process standard pending tracks
     const nextPending = audioFiles.find((f) => f.status === "pending");
     if (nextPending) {
       isProcessingQueueRef.current = true;
@@ -463,7 +548,7 @@ export default function AudioConverter() {
       return;
     }
 
-    // 2. All standard pending tracks in the list are finished!
+    // 3. All standard pending tracks in the list are finished!
     // Check if any failed track should be automatically retried after the rest of the list
     const failedTrackToRetry = audioFiles.find(
       (f) => f.status === "error" && (f.retryCount || 0) < MAX_AUTO_RETRIES
@@ -483,6 +568,7 @@ export default function AudioConverter() {
                   ...f,
                   status: "pending",
                   progress: 0,
+                  stage: "Auto-retrying...",
                   retryCount: nextAttempt,
                   error: undefined,
                   errorDetails: undefined,
@@ -1329,8 +1415,14 @@ export default function AudioConverter() {
                                 </span>
                               )}
                               {item.status === "converting" && (
-                                <span className="text-cyan-400 font-mono animate-pulse">
-                                  Processing {item.progress || 0}%
+                                <span className="text-cyan-400 font-mono flex items-center gap-1.5 flex-wrap">
+                                  <span className="animate-spin inline-block w-2.5 h-2.5 border border-cyan-400 border-t-transparent rounded-full" />
+                                  <span>{item.progress || 10}%</span>
+                                  {item.stage && (
+                                    <span className="text-cyan-300/80 font-sans text-[10px] truncate max-w-[130px] sm:max-w-[200px]">
+                                      • {item.stage}
+                                    </span>
+                                  )}
                                 </span>
                               )}
                               {item.status === "pending" && (
@@ -1345,7 +1437,7 @@ export default function AudioConverter() {
                                   <span>Failed</span>
                                   {(item.retryCount || 0) < MAX_AUTO_RETRIES ? (
                                     <span className="text-amber-300 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.2 rounded font-sans text-[10px]">
-                                      Auto-retry after list ({item.retryCount || 0}/{MAX_AUTO_RETRIES})
+                                      Will retry after next success ({item.retryCount || 0}/{MAX_AUTO_RETRIES})
                                     </span>
                                   ) : (
                                     <span className="text-red-400/70 font-sans text-[10px]">
@@ -1414,11 +1506,17 @@ export default function AudioConverter() {
 
                         {/* Progress Bar for Converting Tracks */}
                         {item.status === "converting" && (
-                          <div className="mt-2.5 pt-2 border-t border-slate-900">
+                          <div className="mt-2.5 pt-2 border-t border-slate-900 space-y-1">
+                            <div className="flex justify-between items-center text-[10px] font-mono">
+                              <span className="text-cyan-300 font-medium truncate max-w-[240px] sm:max-w-xs">
+                                {item.stage || "Processing audio..."}
+                              </span>
+                              <span className="text-cyan-400 font-bold">{item.progress || 10}%</span>
+                            </div>
                             <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
                               <div
                                 className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 h-1.5 transition-all duration-300"
-                                style={{ width: `${item.progress || 20}%` }}
+                                style={{ width: `${Math.max(8, item.progress || 10)}%` }}
                               />
                             </div>
                           </div>

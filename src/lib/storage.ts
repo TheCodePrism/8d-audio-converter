@@ -271,6 +271,7 @@ export interface PersistedQueueItem {
   size?: number;
   status: "pending" | "converting" | "complete" | "error";
   progress?: number;
+  stage?: string;
   sourceType: "upload" | "youtube" | "demo";
   sourceUrl?: string;
   addedAt?: number;
@@ -289,6 +290,7 @@ export function saveQueueManifest(items: AudioFileItem[]): void {
       // If refreshed mid-conversion, reset to pending so it resumes cleanly
       status: f.status === "converting" ? "pending" : f.status,
       progress: f.status === "complete" ? 100 : 0,
+      stage: f.stage,
       sourceType: f.sourceType,
       sourceUrl: f.sourceUrl,
       addedAt: f.addedAt,

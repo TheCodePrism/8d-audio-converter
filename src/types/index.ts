@@ -56,6 +56,7 @@ export interface AudioFileItem {
   convertedUrl?: string;
   status: "pending" | "converting" | "complete" | "error";
   progress?: number;
+  stage?: string;
   error?: string;
   errorDetails?: string;
   sourceType: "upload" | "youtube" | "demo";
