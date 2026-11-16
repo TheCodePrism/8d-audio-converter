@@ -154,13 +154,13 @@ export async function exportTracksToPackFile(
 
   // 3. Assemble full blob parts
   const audioBlobs = tracks.map((t) => t.blob);
-  const fullBlobParts: (ArrayBuffer | Uint8Array | Blob)[] = [
+  const fullBlobParts = [
     headerBuffer,
     manifestBytes,
     ...audioBlobs,
   ];
 
-  return new Blob(fullBlobParts, { type: "application/octet-stream" });
+  return new Blob(fullBlobParts as unknown as BlobPart[], { type: "application/octet-stream" });
 }
 
 export async function importTracksFromPackFile(
