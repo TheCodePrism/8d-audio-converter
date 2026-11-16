@@ -60,5 +60,6 @@ export interface AudioFileItem {
   sourceType: "upload" | "youtube" | "demo";
   sourceUrl?: string;
   addedAt?: number;
+  retryCount?: number;
   rawBuffer?: AudioBuffer;
 }

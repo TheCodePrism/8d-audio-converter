@@ -241,20 +241,57 @@ export default function AudioConverter() {
     [options, registerUrl, updateItemProgress]
   );
 
-  // Background Queue Runner: automatically detects next pending track
+  const MAX_AUTO_RETRIES = 2;
+
+  // Background Queue Runner: automatically detects next pending track,
+  // and once all other tracks in the list are processed, automatically retries failed ones.
   useEffect(() => {
     if (isProcessingQueueRef.current) return;
 
     const isAnyConverting = audioFiles.some((f) => f.status === "converting");
     if (isAnyConverting) return;
 
+    // 1. Process standard pending tracks first
     const nextPending = audioFiles.find((f) => f.status === "pending");
-    if (!nextPending) return;
+    if (nextPending) {
+      isProcessingQueueRef.current = true;
+      processQueueItem(nextPending).finally(() => {
+        isProcessingQueueRef.current = false;
+      });
+      return;
+    }
 
-    isProcessingQueueRef.current = true;
-    processQueueItem(nextPending).finally(() => {
-      isProcessingQueueRef.current = false;
-    });
+    // 2. All standard pending tracks in the list are finished!
+    // Check if any failed track should be automatically retried after the rest of the list
+    const failedTrackToRetry = audioFiles.find(
+      (f) => f.status === "error" && (f.retryCount || 0) < MAX_AUTO_RETRIES
+    );
+
+    if (failedTrackToRetry) {
+      const nextAttempt = (failedTrackToRetry.retryCount || 0) + 1;
+      console.log(
+        `[Auto-Retry] All other queue items processed. Automatically retrying "${failedTrackToRetry.name}" (attempt ${nextAttempt}/${MAX_AUTO_RETRIES})...`
+      );
+
+      const timer = setTimeout(() => {
+        setAudioFiles((prev) =>
+          prev.map((f) =>
+            f.id === failedTrackToRetry.id
+              ? {
+                  ...f,
+                  status: "pending",
+                  progress: 0,
+                  retryCount: nextAttempt,
+                  error: undefined,
+                  errorDetails: undefined,
+                }
+              : f
+          )
+        );
+      }, 1500);
+
+      return () => clearTimeout(timer);
+    }
   }, [audioFiles, processQueueItem]);
 
   // --- 1. Local File Upload Handler ---
@@ -277,12 +314,11 @@ export default function AudioConverter() {
       const updated = [...prev, ...newItems];
       if (prev.length === 0) {
         setCurrentTrackIndex(0);
+        setActiveStudioTab("queue");
+        setMobileTab("player");
       }
       return updated;
     });
-
-    setActiveStudioTab("queue");
-    setMobileTab("player");
   };
 
   // --- 2. YouTube Single Track Handler ---
@@ -305,12 +341,11 @@ export default function AudioConverter() {
       const updated = [...prev, item];
       if (prev.length === 0) {
         setCurrentTrackIndex(0);
+        setActiveStudioTab("queue");
+        setMobileTab("player");
       }
       return updated;
     });
-
-    setActiveStudioTab("queue");
-    setMobileTab("player");
   };
 
   // --- 2b. YouTube Batch / Playlist Handler (Non-blocking queue visibility) ---
@@ -333,12 +368,11 @@ export default function AudioConverter() {
       const updated = [...prev, ...newItems];
       if (prev.length === 0) {
         setCurrentTrackIndex(0);
+        setActiveStudioTab("queue");
+        setMobileTab("player");
       }
       return updated;
     });
-
-    setActiveStudioTab("queue");
-    setMobileTab("player");
   };
 
   // --- 3. Instant Demo Track Synthesizer ---
@@ -378,6 +412,7 @@ export default function AudioConverter() {
               ...f,
               status: "pending",
               progress: 0,
+              retryCount: 0, // Reset retry count on manual user trigger
               error: undefined,
               errorDetails: undefined,
             }
@@ -395,6 +430,7 @@ export default function AudioConverter() {
               ...f,
               status: "pending",
               progress: 0,
+              retryCount: 0, // Reset retry count on manual user trigger
               error: undefined,
               errorDetails: undefined,
             }
@@ -919,9 +955,18 @@ export default function AudioConverter() {
                                 </span>
                               )}
                               {item.status === "error" && (
-                                <span className="text-red-400 font-mono flex items-center gap-1">
-                                  <AlertCircle className="w-3 h-3" />
-                                  Failed
+                                <span className="text-red-400 font-mono flex items-center gap-1.5 flex-wrap">
+                                  <AlertCircle className="w-3 h-3 shrink-0" />
+                                  <span>Failed</span>
+                                  {(item.retryCount || 0) < MAX_AUTO_RETRIES ? (
+                                    <span className="text-amber-300 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.2 rounded font-sans text-[10px]">
+                                      Auto-retry after list ({item.retryCount || 0}/{MAX_AUTO_RETRIES})
+                                    </span>
+                                  ) : (
+                                    <span className="text-red-400/70 font-sans text-[10px]">
+                                      (Click Retry)
+                                    </span>
+                                  )}
                                 </span>
                               )}
                             </div>

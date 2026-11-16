@@ -36,6 +36,7 @@ export default function YouTubeInput({
   const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(
     new Set()
   );
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
   const formatDuration = (seconds?: number) => {
     if (!seconds) return "";
@@ -49,6 +50,7 @@ export default function YouTubeInput({
     if (!url.trim()) return;
 
     setError(null);
+    setFeedbackMessage(null);
     setIsLoading(true);
     setInfo(null);
     setSelectedTrackIds(new Set());
@@ -111,6 +113,9 @@ export default function YouTubeInput({
 
   const handleConvertSingle = (track: YouTubeTrack) => {
     onConvertTrack(track);
+    setFeedbackMessage(`✓ Added "${track.title}" to 8D queue! You can paste another link below.`);
+    setUrl("");
+    setInfo(null);
   };
 
   const handleConvertSelected = () => {
@@ -120,9 +125,13 @@ export default function YouTubeInput({
     );
     if (selectedTracks.length === 1) {
       onConvertTrack(selectedTracks[0]);
+      setFeedbackMessage(`✓ Added "${selectedTracks[0].title}" to 8D queue!`);
     } else if (selectedTracks.length > 1) {
       onConvertBatch(selectedTracks);
+      setFeedbackMessage(`✓ Added ${selectedTracks.length} tracks to 8D queue!`);
     }
+    setUrl("");
+    setInfo(null);
   };
 
   return (
@@ -138,12 +147,12 @@ export default function YouTubeInput({
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="Paste YouTube Video or Playlist URL..."
-            disabled={isLoading || isConverting}
+            disabled={isLoading}
             className="w-full pl-11 sm:pl-12 pr-24 sm:pr-28 py-3 sm:py-3.5 bg-slate-950/60 border border-slate-800 rounded-xl text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500 transition-all text-slate-100 placeholder-slate-500"
           />
           <button
             type="submit"
-            disabled={isLoading || !url.trim() || isConverting}
+            disabled={isLoading || !url.trim()}
             className="absolute right-1.5 sm:right-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-md shadow-red-500/20"
           >
             {isLoading ? (
@@ -158,6 +167,16 @@ export default function YouTubeInput({
           Paste any YouTube song or playlist. The audio stream is securely proxied and converted into 8D spatial sound.
         </p>
       </form>
+
+      {/* Success Notification after adding */}
+      {feedbackMessage && (
+        <Alert className="bg-emerald-950/60 border-emerald-800/80 text-emerald-200">
+          <CheckSquare className="w-4 h-4 text-emerald-400" />
+          <AlertDescription className="text-xs font-medium">
+            {feedbackMessage}
+          </AlertDescription>
+        </Alert>
+      )}
 
       {error && (
         <Alert variant="destructive" className="bg-red-950/50 border-red-800/80 text-red-200">
