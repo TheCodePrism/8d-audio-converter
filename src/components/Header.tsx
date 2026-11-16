@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Headphones, Github, Sparkles, Radio } from "lucide-react";
+import { Headphones, Github, Sparkles, Radio, Activity } from "lucide-react";
 
 export default function Header() {
   return (
@@ -42,10 +42,11 @@ export default function Header() {
               HRTF Science
             </Link>
             <Link
-              href="/contact"
-              className="text-slate-400 hover:text-cyan-400 transition-colors hidden sm:block"
+              href="/admin"
+              className="text-slate-400 hover:text-cyan-400 transition-colors flex items-center gap-1"
             >
-              Contact
+              <Activity className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Diagnostics</span>
             </Link>
             <a
               href="https://github.com/TheCodePrism/8d-audio-converter"

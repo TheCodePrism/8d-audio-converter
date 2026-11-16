@@ -11,6 +11,7 @@ import {
   Volume2,
   Compass,
   Radio,
+  Headphones,
 } from "lucide-react";
 import { AudioProcessingOptions } from "@/types";
 import { PRESETS } from "@/lib/audioProcessing";
@@ -243,6 +244,81 @@ export default function AudioSettings({
                 <span>Club (+4 dB)</span>
                 <span>Max (+12 dB)</span>
               </div>
+            </div>
+
+            {/* 16D Vertical Elevation */}
+            <div className="space-y-2 bg-slate-950/40 p-3.5 rounded-xl border border-slate-800/60">
+              <div className="flex justify-between text-xs font-medium text-slate-300">
+                <span className="flex items-center gap-1.5 text-slate-200">
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                  16D Vertical Elevation
+                </span>
+                <span className="text-cyan-400 font-mono font-bold">
+                  {options.verticalOrbit !== false ? "16D 3D Sphere" : "Flat 8D"}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => handleOptionChange("verticalOrbit", true)}
+                  className={`py-2 px-3 rounded-lg border text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${
+                    options.verticalOrbit !== false
+                      ? "border-cyan-500 bg-cyan-500/20 text-cyan-300 shadow-sm"
+                      : "border-slate-800 hover:border-slate-700 text-slate-400"
+                  }`}
+                >
+                  3D Helical ↕
+                </button>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => handleOptionChange("verticalOrbit", false)}
+                  className={`py-2 px-3 rounded-lg border text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${
+                    options.verticalOrbit === false
+                      ? "border-cyan-500 bg-cyan-500/20 text-cyan-300 shadow-sm"
+                      : "border-slate-800 hover:border-slate-700 text-slate-400"
+                  }`}
+                >
+                  Flat Ring ↔
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-500">
+                Sweeps sound vertically over your head and below ear level in true 3D space.
+              </p>
+            </div>
+
+            {/* Center Vocal & Kick Anchor */}
+            <div className="space-y-2 bg-slate-950/40 p-3.5 rounded-xl border border-slate-800/60">
+              <div className="flex justify-between text-xs font-medium text-slate-300">
+                <span className="flex items-center gap-1.5 text-slate-200">
+                  <Headphones className="w-3.5 h-3.5 text-amber-400" />
+                  Center Vocal Anchor
+                </span>
+                <span className="text-amber-400 font-mono font-bold">
+                  {Math.round((options.centerAnchor ?? 0.18) * 100)}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="0.45"
+                step="0.05"
+                disabled={disabled}
+                value={options.centerAnchor ?? 0.18}
+                onChange={(e) =>
+                  handleOptionChange("centerAnchor", parseFloat(e.target.value))
+                }
+                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+              />
+              <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                <span>0% (Full 360)</span>
+                <span>18% (Anchored Lead)</span>
+                <span>45% (Live Arena)</span>
+              </div>
+              <p className="text-[10px] text-slate-500">
+                Keeps vocals and kick drum grounded in front while spatial instruments orbit in 3D.
+              </p>
             </div>
           </div>
         </div>

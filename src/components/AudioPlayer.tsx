@@ -25,8 +25,12 @@ interface AudioPlayerProps {
   is8DReady?: boolean;
   onTimeUpdate?: (currentTime: number) => void;
   onPlayStateChange?: (isPlaying: boolean) => void;
-  onNext?: () => void;
-  onPrev?: () => void;
+  onNext?: (autoPlay?: boolean) => void;
+  onPrev?: (autoPlay?: boolean) => void;
+  isShuffle?: boolean;
+  onToggleShuffle?: () => void;
+  isLooping?: boolean;
+  onToggleLoop?: () => void;
 }
 
 export default function AudioPlayer({
@@ -40,30 +44,60 @@ export default function AudioPlayer({
   onPlayStateChange,
   onNext,
   onPrev,
+  isShuffle: propIsShuffle,
+  onToggleShuffle,
+  isLooping: propIsLooping,
+  onToggleLoop,
 }: AudioPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(1);
-  const [isLooping, setIsLooping] = useState(false);
-  const [isShuffle, setIsShuffle] = useState(false);
+  const [internalLooping, setInternalLooping] = useState(false);
+  const [internalShuffle, setInternalShuffle] = useState(false);
+
+  const isShuffle = propIsShuffle !== undefined ? propIsShuffle : internalShuffle;
+  const isLooping = propIsLooping !== undefined ? propIsLooping : internalLooping;
+
+  const toggleShuffle = () => {
+    if (onToggleShuffle) {
+      onToggleShuffle();
+    } else {
+      setInternalShuffle((prev) => !prev);
+    }
+  };
+
+  const toggleLoop = () => {
+    if (onToggleLoop) {
+      onToggleLoop();
+    } else {
+      setInternalLooping((prev) => !prev);
+    }
+  };
 
   // A/B mode toggle: "8d" or "original"
   const [playbackMode, setPlaybackMode] = useState<"8d" | "original">("8d");
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastTitleRef = useRef(title);
+  const shouldAutoPlayRef = useRef(false);
+
   // Ref to avoid stale closure when reading isPlaying inside effects
   const isPlayingRef = useRef(isPlaying);
   useEffect(() => {
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
+
   // Ref to track currentTime & duration without adding them to effect deps
   const currentTimeRef = useRef(currentTime);
   const durationRef = useRef(duration);
-  useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
-  useEffect(() => { durationRef.current = duration; }, [duration]);
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
+  useEffect(() => {
+    durationRef.current = duration;
+  }, [duration]);
 
   // Determine active source based on A/B mode
   const activeSource =
@@ -93,8 +127,11 @@ export default function AudioPlayer({
       setCurrentTime(0);
     }
 
-    if (isPlayingRef.current) {
-      audio.play().catch(() => {});
+    if (shouldAutoPlayRef.current || isPlayingRef.current) {
+      shouldAutoPlayRef.current = false;
+      audio.play().catch((err) => {
+        console.warn("Playback or autoplay restriction:", err);
+      });
     }
   }, [activeSource, title]);
 
@@ -129,7 +166,10 @@ export default function AudioPlayer({
         setIsPlaying(false);
         setCurrentTime(0);
         if (onPlayStateChange) onPlayStateChange(false);
-        if (onNext) onNext();
+        if (onNext) {
+          shouldAutoPlayRef.current = true;
+          onNext(true);
+        }
       }
     };
 
@@ -199,83 +239,70 @@ export default function AudioPlayer({
     }
   };
 
-  const toggleABMode = () => {
-    if (!originalSrc) return;
-    setPlaybackMode((prev) => (prev === "8d" ? "original" : "8d"));
-  };
-
-  const formatTime = (time: number) => {
-    if (isNaN(time) || time === Infinity) return "0:00";
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
+  const formatTime = (seconds: number) => {
+    if (isNaN(seconds)) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="w-full bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 sm:p-5 shadow-2xl backdrop-blur-xl relative overflow-hidden">
-      {/* Hidden native audio tag */}
+    <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-inner backdrop-blur-md">
       <audio ref={audioRef} preload="metadata" />
 
-      {/* Top Bar: Now Playing + A/B Spatial Switch */}
-      <div className="flex items-center justify-between gap-2.5 mb-3 sm:mb-4 pb-2.5 sm:pb-3 border-b border-slate-800/80">
-        <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          {/* Vinyl / Cover Art */}
-          <div className="relative w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0 rounded-xl overflow-hidden bg-slate-800 border border-slate-700/60 shadow-md">
+      {/* Song Header & A/B Comparison Toggle */}
+      <div className="flex items-center justify-between gap-3 mb-3 sm:mb-4">
+        {/* Track Thumbnail & Title */}
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="relative w-11 h-11 sm:w-13 sm:h-13 md:w-14 md:h-14 rounded-xl overflow-hidden bg-slate-900 border border-slate-800 flex-shrink-0 flex items-center justify-center shadow-md">
             {thumbnail ? (
               <img
                 src={thumbnail}
                 alt={title}
-                className={`w-full h-full object-cover transition-transform duration-700 ${
-                  isPlaying ? "scale-105" : "scale-100"
-                }`}
+                className="w-full h-full object-cover"
               />
             ) : (
-              <div
-                className={`w-full h-full flex items-center justify-center bg-gradient-to-tr from-cyan-600 via-indigo-600 to-purple-600 text-white ${
-                  isPlaying ? "animate-spin" : ""
-                }`}
-                style={{ animationDuration: "8s" }}
-              >
-                <Headphones className="w-5 h-5 sm:w-6 sm:h-6" />
+              <Headphones className="w-6 h-6 text-cyan-400" />
+            )}
+            {isPlaying && (
+              <div className="absolute inset-0 bg-cyan-950/40 backdrop-blur-[1px] flex items-center justify-center">
+                <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
               </div>
             )}
-            {/* Center vinyl spindle */}
-            <div className="absolute inset-0 m-auto w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-slate-950 border border-slate-700/80 pointer-events-none" />
           </div>
 
-          <div className="min-w-0 flex-1">
-            <h4 className="text-white font-semibold text-xs sm:text-sm md:text-base truncate">
+          <div className="min-w-0">
+            <h3 className="font-bold text-white text-xs sm:text-sm md:text-base truncate leading-tight">
               {title}
-            </h4>
-            <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-slate-400">
-              <span className="truncate max-w-[120px] sm:max-w-none">{artist}</span>
-              <span className="text-slate-600">•</span>
-              <span
-                className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-mono font-semibold uppercase ${
-                  playbackMode === "8d"
-                    ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/30"
-                    : "bg-slate-800 text-slate-300 border border-slate-700"
-                }`}
-              >
-                {playbackMode === "8d" ? "8D Spatial" : "Original"}
+            </h3>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-[11px] sm:text-xs text-slate-400 truncate max-w-[140px] sm:max-w-[200px]">
+                {artist}
               </span>
+              {is8DReady && (
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 uppercase">
+                  8D SPATIAL
+                </span>
+              )}
             </div>
           </div>
         </div>
 
-        {/* A/B Switch Button */}
-        {originalSrc && (
+        {/* Live A/B Comparison Pill */}
+        {originalSrc && is8DReady && (
           <button
             type="button"
-            onClick={toggleABMode}
-            className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold transition-all shadow-sm ${
+            onClick={() =>
+              setPlaybackMode((prev) => (prev === "8d" ? "original" : "8d"))
+            }
+            className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] font-mono font-semibold transition-all flex items-center gap-1.5 border shrink-0 ${
               playbackMode === "8d"
-                ? "bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-400/40 text-cyan-300 hover:from-cyan-500/30 hover:to-purple-500/30"
-                : "bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700"
+                ? "bg-cyan-500/15 border-cyan-400/60 text-cyan-300 shadow-sm shadow-cyan-500/20"
+                : "bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200"
             }`}
-            title="Compare 8D Spatial Audio vs Original Track"
+            title="Toggle between 8D Spatial Audio and Original Stereo Audio"
           >
             <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-cyan-400" />
             <span>{playbackMode === "8d" ? "8D ON" : "BYPASS"}</span>
@@ -312,21 +339,21 @@ export default function AudioPlayer({
         <div className="flex items-center gap-1 sm:gap-2 text-slate-400">
           <button
             type="button"
-            onClick={() => setIsShuffle(!isShuffle)}
+            onClick={toggleShuffle}
             className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
               isShuffle ? "text-cyan-400 bg-cyan-500/10" : "hover:text-white"
             }`}
-            title="Shuffle"
+            title={isShuffle ? "Shuffle On" : "Shuffle Off"}
           >
             <Shuffle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
           <button
             type="button"
-            onClick={() => setIsLooping(!isLooping)}
+            onClick={toggleLoop}
             className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
               isLooping ? "text-cyan-400 bg-cyan-500/10" : "hover:text-white"
             }`}
-            title="Loop Track"
+            title={isLooping ? "Loop On" : "Loop Off"}
           >
             <Repeat className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
@@ -336,7 +363,10 @@ export default function AudioPlayer({
         <div className="flex items-center gap-2 sm:gap-3 md:gap-4">
           <button
             type="button"
-            onClick={onPrev}
+            onClick={() => {
+              if (isPlayingRef.current) shouldAutoPlayRef.current = true;
+              if (onPrev) onPrev(isPlayingRef.current);
+            }}
             disabled={!onPrev}
             className="p-1.5 sm:p-2 text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             title="Previous Track"
@@ -379,7 +409,10 @@ export default function AudioPlayer({
 
           <button
             type="button"
-            onClick={onNext}
+            onClick={() => {
+              if (isPlayingRef.current) shouldAutoPlayRef.current = true;
+              if (onNext) onNext(isPlayingRef.current);
+            }}
             disabled={!onNext}
             className="p-1.5 sm:p-2 text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             title="Next Track"

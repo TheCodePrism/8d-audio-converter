@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Download,
   AlertCircle,
   X,
   Sparkles,
   RefreshCw,
+  RotateCw,
   Upload,
   Youtube,
   Music,
@@ -29,7 +30,7 @@ import AudioSettings from "./AudioSettings";
 import OrbitVisualizer from "./OrbitVisualizer";
 import YouTubeInput from "./YouTubeInput";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AudioProcessingOptions, YouTubeTrack } from "@/types";
+import { AudioProcessingOptions, AudioFileItem, YouTubeTrack } from "@/types";
 import {
   DEFAULT_OPTIONS,
   PRESETS,
@@ -49,22 +50,6 @@ const SUPPORTED_FORMATS = [
   "audio/flac",
 ];
 
-interface AudioFileItem {
-  id: string;
-  name: string;
-  artist?: string;
-  thumbnail?: string;
-  size?: number;
-  file?: File;
-  originalUrl: string;
-  convertedUrl?: string;
-  status: "pending" | "converting" | "complete" | "error";
-  progress?: number;
-  error?: string;
-  sourceType: "upload" | "youtube" | "demo";
-  rawBuffer?: AudioBuffer;
-}
-
 export default function AudioConverter() {
   const [activeStudioTab, setActiveStudioTab] = useState<"queue" | "add" | "settings">("add");
   const [addMode, setAddMode] = useState<"upload" | "youtube">("upload");
@@ -74,10 +59,13 @@ export default function AudioConverter() {
   const [currentTrackIndex, setCurrentTrackIndex] = useState<number>(0);
   const [options, setOptions] = useState<AudioProcessingOptions>(DEFAULT_OPTIONS);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [isShuffle, setIsShuffle] = useState<boolean>(false);
+  const [isLooping, setIsLooping] = useState<boolean>(false);
   const [activePlaybackTime, setActivePlaybackTime] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
 
   const createdUrlsRef = useRef<string[]>([]);
+  const isProcessingQueueRef = useRef<boolean>(false);
 
   useEffect(() => {
     const urls = createdUrlsRef.current;
@@ -90,10 +78,10 @@ export default function AudioConverter() {
     };
   }, []);
 
-  const registerUrl = (url: string) => {
+  const registerUrl = useCallback((url: string) => {
     createdUrlsRef.current.push(url);
     return url;
-  };
+  }, []);
 
   const validateFile = (file: File): string | null => {
     if (file.size > MAX_FILE_SIZE) {
@@ -108,11 +96,172 @@ export default function AudioConverter() {
     return null;
   };
 
+  const updateItemProgress = useCallback((id: string, percent: number) => {
+    setAudioFiles((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, progress: percent } : f))
+    );
+  }, []);
+
+  // --- Queue Worker Core Processing ---
+  const processQueueItem = useCallback(
+    async (item: AudioFileItem) => {
+      setAudioFiles((prev) =>
+        prev.map((f) =>
+          f.id === item.id
+            ? { ...f, status: "converting", progress: 15, error: undefined, errorDetails: undefined }
+            : f
+        )
+      );
+
+      let audioContext: AudioContext | null = null;
+      try {
+        let decodedBuffer: AudioBuffer;
+        let originalUrl = item.originalUrl;
+
+        if (item.sourceType === "upload" && item.file) {
+          updateItemProgress(item.id, 30);
+          const validationError = validateFile(item.file);
+          if (validationError) throw new Error(validationError);
+
+          const arrayBuffer = await item.file.arrayBuffer();
+          updateItemProgress(item.id, 50);
+
+          const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+          audioContext = new AudioCtx();
+          decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        } else if (item.sourceType === "youtube") {
+          updateItemProgress(item.id, 25);
+          const ytUrl = item.sourceUrl || item.originalUrl;
+          if (!ytUrl) throw new Error("Missing YouTube source URL.");
+
+          const streamRes = await fetch(
+            `/api/youtube/stream?url=${encodeURIComponent(ytUrl)}`
+          );
+
+          if (!streamRes.ok) {
+            let errMsg = "Failed to download YouTube audio stream.";
+            try {
+              const text = await streamRes.text();
+              try {
+                const parsed = JSON.parse(text);
+                if (parsed.error) errMsg = parsed.error;
+              } catch {
+                if (text && text.length < 200) errMsg = text;
+              }
+            } catch {}
+            throw new Error(errMsg);
+          }
+
+          updateItemProgress(item.id, 45);
+          const contentType = streamRes.headers.get("content-type") || "";
+          const audioBlob = await streamRes.blob();
+
+          if (
+            contentType.includes("text") ||
+            contentType.includes("json") ||
+            audioBlob.size < 1024
+          ) {
+            let errMsg = "Received invalid audio response from server.";
+            try {
+              const text = await audioBlob.text();
+              try {
+                const parsed = JSON.parse(text);
+                if (parsed.error) errMsg = parsed.error;
+              } catch {
+                if (text && text.length < 300) {
+                  const stripped = text.replace(/<[^>]+>/g, "").trim();
+                  if (stripped) errMsg = stripped;
+                }
+              }
+            } catch {}
+            throw new Error(errMsg);
+          }
+
+          originalUrl = registerUrl(URL.createObjectURL(audioBlob));
+          const arrayBuffer = await audioBlob.arrayBuffer();
+
+          updateItemProgress(item.id, 65);
+          const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+          audioContext = new AudioCtx();
+          try {
+            decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
+          } catch (decodeErr: any) {
+            throw new Error(
+              "Unable to decode audio data. The audio stream may be corrupt or encoded in an unsupported format."
+            );
+          }
+        } else if (item.sourceType === "demo") {
+          updateItemProgress(item.id, 40);
+          decodedBuffer = generateDemoAudioBuffer(44100, 16);
+          const rawWavBlob = float32ToWav(decodedBuffer);
+          originalUrl = registerUrl(URL.createObjectURL(rawWavBlob));
+        } else {
+          throw new Error("Unknown source type for conversion.");
+        }
+
+        updateItemProgress(item.id, 85);
+        const processedBuffer = await process8DAudio(decodedBuffer, options);
+        const wavBlob = float32ToWav(processedBuffer);
+        const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
+
+        setAudioFiles((prev) =>
+          prev.map((f) =>
+            f.id === item.id
+              ? {
+                  ...f,
+                  originalUrl,
+                  convertedUrl,
+                  status: "complete",
+                  progress: 100,
+                  size: wavBlob.size,
+                  rawBuffer: decodedBuffer,
+                }
+              : f
+          )
+        );
+      } catch (err: any) {
+        console.error("Conversion error for track:", item.name, err);
+        const msg = err?.message || "Audio conversion failed.";
+        setAudioFiles((prev) =>
+          prev.map((f) =>
+            f.id === item.id
+              ? { ...f, status: "error", error: msg, errorDetails: String(err?.stack || err) }
+              : f
+          )
+        );
+        setError(`Failed converting "${item.name}": ${msg}`);
+      } finally {
+        if (audioContext && audioContext.state !== "closed") {
+          try {
+            await audioContext.close();
+          } catch {}
+        }
+      }
+    },
+    [options, registerUrl, updateItemProgress]
+  );
+
+  // Background Queue Runner: automatically detects next pending track
+  useEffect(() => {
+    if (isProcessingQueueRef.current) return;
+
+    const isAnyConverting = audioFiles.some((f) => f.status === "converting");
+    if (isAnyConverting) return;
+
+    const nextPending = audioFiles.find((f) => f.status === "pending");
+    if (!nextPending) return;
+
+    isProcessingQueueRef.current = true;
+    processQueueItem(nextPending).finally(() => {
+      isProcessingQueueRef.current = false;
+    });
+  }, [audioFiles, processQueueItem]);
+
   // --- 1. Local File Upload Handler ---
-  const handleFileUpload = async (files: File[]) => {
+  const handleFileUpload = (files: File[]) => {
     setError(null);
     const newItems: AudioFileItem[] = files.map((file) => ({
-      id: `${file.name}-${Date.now()}-${Math.random()}`,
+      id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       name: file.name.replace(/\.[^/.]+$/, ""),
       artist: "Local Audio File",
       size: file.size,
@@ -121,6 +270,7 @@ export default function AudioConverter() {
       status: "pending",
       progress: 0,
       sourceType: "upload",
+      addedAt: Date.now(),
     }));
 
     setAudioFiles((prev) => {
@@ -133,39 +283,26 @@ export default function AudioConverter() {
 
     setActiveStudioTab("queue");
     setMobileTab("player");
-
-    // Automatically convert first uploaded track
-    for (const item of newItems) {
-      const validationError = validateFile(item.file!);
-      if (validationError) {
-        setAudioFiles((prev) =>
-          prev.map((f) =>
-            f.id === item.id ? { ...f, status: "error", error: validationError } : f
-          )
-        );
-        continue;
-      }
-      await runConversion(item);
-    }
   };
 
-  // --- 2. YouTube Track Conversion Handler ---
+  // --- 2. YouTube Single Track Handler ---
   const handleConvertYouTubeTrack = async (track: YouTubeTrack) => {
     setError(null);
     const item: AudioFileItem = {
-      id: `yt-${track.id}-${Date.now()}`,
+      id: `yt-${track.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       name: track.title,
       artist: track.author || "YouTube Music",
       thumbnail: track.thumbnail,
       originalUrl: "",
-      status: "converting",
-      progress: 10,
+      sourceUrl: track.url,
+      status: "pending",
+      progress: 0,
       sourceType: "youtube",
+      addedAt: Date.now(),
     };
 
     setAudioFiles((prev) => {
       const updated = [...prev, item];
-      // Only set active track if queue was previously empty
       if (prev.length === 0) {
         setCurrentTrackIndex(0);
       }
@@ -174,117 +311,38 @@ export default function AudioConverter() {
 
     setActiveStudioTab("queue");
     setMobileTab("player");
-
-    let audioContext: AudioContext | null = null;
-    try {
-      updateItemProgress(item.id, 25);
-      const streamRes = await fetch(
-        `/api/youtube/stream?url=${encodeURIComponent(track.url)}`
-      );
-
-      if (!streamRes.ok) {
-        let errMsg = "Failed to download YouTube audio stream.";
-        try {
-          const text = await streamRes.text();
-          try {
-            const parsed = JSON.parse(text);
-            if (parsed.error) errMsg = parsed.error;
-          } catch {
-            if (text && text.length < 200) errMsg = text;
-          }
-        } catch {}
-        throw new Error(errMsg);
-      }
-
-      updateItemProgress(item.id, 45);
-      const contentType = streamRes.headers.get("content-type") || "";
-      const audioBlob = await streamRes.blob();
-
-      // Guard against non-audio error payloads sent with 200 status (e.g. HTML/JSON error pages)
-      if (
-        contentType.includes("text") ||
-        contentType.includes("json") ||
-        audioBlob.size < 1024
-      ) {
-        let errMsg = "Received invalid audio response from server.";
-        try {
-          const text = await audioBlob.text();
-          try {
-            const parsed = JSON.parse(text);
-            if (parsed.error) errMsg = parsed.error;
-          } catch {
-            if (text && text.length < 300) {
-              const stripped = text.replace(/<[^>]+>/g, "").trim();
-              if (stripped) errMsg = stripped;
-            }
-          }
-        } catch {}
-        throw new Error(errMsg);
-      }
-
-      const originalUrl = registerUrl(URL.createObjectURL(audioBlob));
-      const arrayBuffer = await audioBlob.arrayBuffer();
-
-      updateItemProgress(item.id, 65);
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      audioContext = new AudioCtx();
-      let decodedBuffer: AudioBuffer;
-      try {
-        decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      } catch (decodeErr: any) {
-        console.error("AudioContext.decodeAudioData failed:", decodeErr);
-        throw new Error(
-          "Unable to decode audio data. The audio stream may be corrupt or encoded in an unsupported format."
-        );
-      }
-
-      updateItemProgress(item.id, 85);
-      const processedBuffer = await process8DAudio(decodedBuffer, options);
-
-      const wavBlob = float32ToWav(processedBuffer);
-      const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
-
-      setAudioFiles((prev) =>
-        prev.map((f) =>
-          f.id === item.id
-            ? {
-                ...f,
-                originalUrl,
-                convertedUrl,
-                status: "complete",
-                progress: 100,
-                size: wavBlob.size,
-                rawBuffer: decodedBuffer,
-              }
-            : f
-        )
-      );
-    } catch (err: any) {
-      console.error("YouTube conversion error:", err);
-      const msg = err?.message || "YouTube conversion failed.";
-      setAudioFiles((prev) =>
-        prev.map((f) =>
-          f.id === item.id ? { ...f, status: "error", error: msg } : f
-        )
-      );
-      setError(msg);
-    } finally {
-      if (audioContext && audioContext.state !== "closed") {
-        try {
-          await audioContext.close();
-        } catch {}
-      }
-    }
   };
 
+  // --- 2b. YouTube Batch / Playlist Handler (Non-blocking queue visibility) ---
   const handleConvertYouTubeBatch = async (tracks: YouTubeTrack[]) => {
-    for (const track of tracks) {
-      await handleConvertYouTubeTrack(track);
-    }
+    setError(null);
+    const newItems: AudioFileItem[] = tracks.map((track) => ({
+      id: `yt-${track.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: track.title,
+      artist: track.author || "YouTube Music",
+      thumbnail: track.thumbnail,
+      originalUrl: "",
+      sourceUrl: track.url,
+      status: "pending",
+      progress: 0,
+      sourceType: "youtube",
+      addedAt: Date.now(),
+    }));
+
+    setAudioFiles((prev) => {
+      const updated = [...prev, ...newItems];
+      if (prev.length === 0) {
+        setCurrentTrackIndex(0);
+      }
+      return updated;
+    });
+
+    setActiveStudioTab("queue");
+    setMobileTab("player");
   };
 
   // --- 3. Instant Demo Track Synthesizer ---
-  const handleLoadDemoTrack = async () => {
+  const handleLoadDemoTrack = () => {
     setError(null);
     const demoId = `demo-${Date.now()}`;
     const item: AudioFileItem = {
@@ -292,14 +350,14 @@ export default function AudioConverter() {
       name: "Starlight Neon Dreams (8D Demo)",
       artist: "8D Spatial Synthesizer",
       originalUrl: "",
-      status: "converting",
-      progress: 20,
+      status: "pending",
+      progress: 0,
       sourceType: "demo",
+      addedAt: Date.now(),
     };
 
     setAudioFiles((prev) => {
       const updated = [...prev, item];
-      // Only set active track if queue was previously empty
       if (prev.length === 0) {
         setCurrentTrackIndex(0);
       }
@@ -308,112 +366,48 @@ export default function AudioConverter() {
 
     setActiveStudioTab("queue");
     setMobileTab("player");
-
-    try {
-      updateItemProgress(demoId, 40);
-      const rawBuffer = generateDemoAudioBuffer(44100, 16);
-      const rawWavBlob = float32ToWav(rawBuffer);
-      const originalUrl = registerUrl(URL.createObjectURL(rawWavBlob));
-
-      updateItemProgress(demoId, 75);
-      const processedBuffer = await process8DAudio(rawBuffer, options);
-      const convertedWavBlob = float32ToWav(processedBuffer);
-      const convertedUrl = registerUrl(URL.createObjectURL(convertedWavBlob));
-
-      setAudioFiles((prev) =>
-        prev.map((f) =>
-          f.id === demoId
-            ? {
-                ...f,
-                originalUrl,
-                convertedUrl,
-                status: "complete",
-                progress: 100,
-                size: convertedWavBlob.size,
-                rawBuffer,
-              }
-            : f
-        )
-      );
-    } catch (err: any) {
-      console.error("Demo synthesis error:", err);
-      setError("Could not synthesize demo audio.");
-    }
   };
 
-  // Helper to run local file conversion
-  const runConversion = async (item: AudioFileItem) => {
+  // --- 4. Retry Mechanism ---
+  const handleRetryTrack = (id: string) => {
+    setError(null);
     setAudioFiles((prev) =>
       prev.map((f) =>
-        f.id === item.id ? { ...f, status: "converting", progress: 20 } : f
+        f.id === id
+          ? {
+              ...f,
+              status: "pending",
+              progress: 0,
+              error: undefined,
+              errorDetails: undefined,
+            }
+          : f
       )
     );
-
-    let audioContext: AudioContext | null = null;
-    try {
-      const arrayBuffer = await item.file!.arrayBuffer();
-      updateItemProgress(item.id, 45);
-
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      audioContext = new AudioCtx();
-      let decodedBuffer: AudioBuffer;
-      try {
-        decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      } catch (decodeErr: any) {
-        console.error("AudioContext.decodeAudioData failed:", decodeErr);
-        throw new Error(
-          "Unable to decode audio data. Please ensure the file is a valid audio format (MP3, WAV, AAC, OGG)."
-        );
-      }
-
-      updateItemProgress(item.id, 70);
-      const processedBuffer = await process8DAudio(decodedBuffer, options);
-
-      updateItemProgress(item.id, 90);
-      const wavBlob = float32ToWav(processedBuffer);
-      const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
-
-      setAudioFiles((prev) =>
-        prev.map((f) =>
-          f.id === item.id
-            ? {
-                ...f,
-                convertedUrl,
-                status: "complete",
-                progress: 100,
-                rawBuffer: decodedBuffer,
-              }
-            : f
-        )
-      );
-    } catch (err: any) {
-      console.error("Conversion error:", err);
-      const msg = err?.message || "Audio conversion failed.";
-      setAudioFiles((prev) =>
-        prev.map((f) =>
-          f.id === item.id ? { ...f, status: "error", error: msg } : f
-        )
-      );
-      setError(msg);
-    } finally {
-      if (audioContext && audioContext.state !== "closed") {
-        try {
-          await audioContext.close();
-        } catch {}
-      }
-    }
   };
 
-  const updateItemProgress = (id: string, percent: number) => {
+  const handleRetryAllFailed = () => {
+    setError(null);
     setAudioFiles((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, progress: percent } : f))
+      prev.map((f) =>
+        f.status === "error"
+          ? {
+              ...f,
+              status: "pending",
+              progress: 0,
+              error: undefined,
+              errorDetails: undefined,
+            }
+          : f
+      )
     );
   };
 
-  // Re-convert a specific track (e.g. after changing 8D parameters)
-  const handleReconvert = async (index: number) => {
+  // Re-convert an existing track with custom options
+  const handleReconvert = async (index: number, customOptions?: AudioProcessingOptions) => {
     const target = audioFiles[index];
     if (!target) return;
+    const opts = customOptions || options;
 
     if (target.rawBuffer) {
       setAudioFiles((prev) =>
@@ -423,7 +417,7 @@ export default function AudioConverter() {
       );
 
       try {
-        const processedBuffer = await process8DAudio(target.rawBuffer, options);
+        const processedBuffer = await process8DAudio(target.rawBuffer, opts);
         const wavBlob = float32ToWav(processedBuffer);
         const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
 
@@ -441,10 +435,66 @@ export default function AudioConverter() {
           )
         );
       }
-    } else if (target.file) {
-      await runConversion(target);
+    } else {
+      // Re-queue the track for conversion
+      handleRetryTrack(target.id);
     }
   };
+
+  // --- 5. Playlist Navigation & Auto-play Next ---
+  const handleNextTrack = useCallback(
+    (autoPlay = false) => {
+      const completeTracks = audioFiles
+        .map((f, idx) => ({ f, idx }))
+        .filter(({ f }) => f.status === "complete");
+
+      if (completeTracks.length === 0) return;
+
+      if (isShuffle) {
+        const otherTracks = completeTracks.filter(({ idx }) => idx !== currentTrackIndex);
+        const pool = otherTracks.length > 0 ? otherTracks : completeTracks;
+        const randomPick = pool[Math.floor(Math.random() * pool.length)].idx;
+        setCurrentTrackIndex(randomPick);
+      } else {
+        const nextSequential = completeTracks.find(({ idx }) => idx > currentTrackIndex);
+        if (nextSequential) {
+          setCurrentTrackIndex(nextSequential.idx);
+        } else if (isLooping) {
+          setCurrentTrackIndex(completeTracks[0].idx);
+        }
+      }
+
+      if (autoPlay) {
+        setIsPlaying(true);
+      }
+    },
+    [audioFiles, currentTrackIndex, isShuffle, isLooping]
+  );
+
+  const handlePrevTrack = useCallback(
+    (autoPlay = false) => {
+      const completeTracks = audioFiles
+        .map((f, idx) => ({ f, idx }))
+        .filter(({ f }) => f.status === "complete");
+
+      if (completeTracks.length === 0) return;
+
+      const prevSequential = [...completeTracks]
+        .reverse()
+        .find(({ idx }) => idx < currentTrackIndex);
+
+      if (prevSequential) {
+        setCurrentTrackIndex(prevSequential.idx);
+      } else {
+        setCurrentTrackIndex(completeTracks[completeTracks.length - 1].idx);
+      }
+
+      if (autoPlay) {
+        setIsPlaying(true);
+      }
+    },
+    [audioFiles, currentTrackIndex]
+  );
 
   const handleDownload = (convertedUrl: string, title: string) => {
     try {
@@ -478,6 +528,8 @@ export default function AudioConverter() {
 
   const activeTrack = audioFiles[currentTrackIndex] || null;
   const isConvertingAny = audioFiles.some((f) => f.status === "converting");
+  const failedTracks = audioFiles.filter((f) => f.status === "error");
+  const pendingTracks = audioFiles.filter((f) => f.status === "pending");
 
   return (
     <div className="space-y-6">
@@ -485,11 +537,19 @@ export default function AudioConverter() {
       {error && (
         <Alert variant="destructive" className="bg-red-950/80 border-red-800 text-red-200">
           <AlertCircle className="w-4 h-4 text-red-400" />
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription className="flex items-center justify-between gap-2">
+            <span>{error}</span>
+            <button
+              type="button"
+              onClick={() => setError(null)}
+              className="text-xs text-red-300 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </AlertDescription>
         </Alert>
       )}
 
-      {/* Main Music Studio Grid */}
       {/* Mobile Top Navigation Segmented Switcher */}
       <div className="lg:hidden flex items-center p-1 bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl">
         <button
@@ -565,24 +625,14 @@ export default function AudioConverter() {
                 artist={activeTrack.artist || "8D Audio Converter"}
                 thumbnail={activeTrack.thumbnail}
                 is8DReady={!!activeTrack.convertedUrl}
+                isShuffle={isShuffle}
+                onToggleShuffle={() => setIsShuffle((prev) => !prev)}
+                isLooping={isLooping}
+                onToggleLoop={() => setIsLooping((prev) => !prev)}
                 onTimeUpdate={setActivePlaybackTime}
                 onPlayStateChange={setIsPlaying}
-                onNext={() => {
-                  // Skip over pending/converting/error tracks — only jump to next complete
-                  const nextIdx = audioFiles.findIndex(
-                    (f, i) => i > currentTrackIndex && f.status === "complete"
-                  );
-                  if (nextIdx !== -1) setCurrentTrackIndex(nextIdx);
-                }}
-                onPrev={() => {
-                  // Walk backwards to previous complete track
-                  for (let i = currentTrackIndex - 1; i >= 0; i--) {
-                    if (audioFiles[i].status === "complete") {
-                      setCurrentTrackIndex(i);
-                      break;
-                    }
-                  }
-                }}
+                onNext={handleNextTrack}
+                onPrev={handlePrevTrack}
               />
             ) : (
               /* Idle Deck State */
@@ -620,22 +670,33 @@ export default function AudioConverter() {
               </div>
             )}
 
-            {/* Quick 8D Preset Pills */}
+            {/* Quick 8D Presets Pills */}
             <div className="mt-4 pt-3 border-t border-slate-800/80">
               <span className="block text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-2">
-                Quick 8D Presets:
+                Quick 8D & 16D Presets:
               </span>
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:flex-wrap no-scrollbar">
                 {PRESETS.map((p) => {
-                  const isCurrent = options.rotationSpeed === p.options.rotationSpeed;
+                  const isCurrent =
+                    options.rotationSpeed === p.options.rotationSpeed &&
+                    options.verticalOrbit === p.options.verticalOrbit;
                   return (
                     <button
                       key={p.id}
                       type="button"
-                      onClick={() => setOptions(p.options)}
+                      onClick={() => {
+                        setOptions(p.options);
+                        if (
+                          activeTrack &&
+                          activeTrack.rawBuffer &&
+                          activeTrack.status === "complete"
+                        ) {
+                          handleReconvert(currentTrackIndex, p.options);
+                        }
+                      }}
                       className={`text-xs px-2.5 py-1 rounded-lg border whitespace-nowrap transition-all ${
                         isCurrent
-                          ? "bg-cyan-500/20 border-cyan-400 text-cyan-200"
+                          ? "bg-cyan-500/20 border-cyan-400 text-cyan-200 ring-1 ring-cyan-500/30"
                           : "bg-slate-950/40 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
                       }`}
                     >
@@ -725,13 +786,31 @@ export default function AudioConverter() {
           {/* TAB 1: PLAYLIST / QUEUE */}
           {activeStudioTab === "queue" && (
             <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-xl backdrop-blur-xl space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800">
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-semibold text-slate-100">
                     Track Queue ({audioFiles.length})
                   </h3>
+                  {pendingTracks.length > 0 && (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+                      {pendingTracks.length} Queued
+                    </span>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {failedTracks.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleRetryAllFailed}
+                      className="text-xs text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1 font-semibold px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/30 shadow-sm"
+                      title="Retry all failed tracks"
+                    >
+                      <RotateCw className="w-3.5 h-3.5" />
+                      <span>Retry Failed ({failedTracks.length})</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={handleLoadDemoTrack}
@@ -740,6 +819,7 @@ export default function AudioConverter() {
                     <Sparkles className="w-3 h-3" />
                     <span>+ Demo Song</span>
                   </button>
+
                   {audioFiles.length > 0 && (
                     <>
                       <span className="text-slate-700">•</span>
@@ -829,24 +909,46 @@ export default function AudioConverter() {
                               )}
                               {item.status === "converting" && (
                                 <span className="text-cyan-400 font-mono animate-pulse">
-                                  Converting {item.progress || 0}%
+                                  Processing {item.progress || 0}%
                                 </span>
                               )}
                               {item.status === "pending" && (
-                                <span className="text-amber-400 font-mono">
-                                  Pending
+                                <span className="text-amber-400 font-mono flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  Pending in Queue
                                 </span>
                               )}
                               {item.status === "error" && (
-                                <span className="text-red-400 font-mono">
-                                  Error
+                                <span className="text-red-400 font-mono flex items-center gap-1">
+                                  <AlertCircle className="w-3 h-3" />
+                                  Failed
                                 </span>
                               )}
                             </div>
+
+                            {/* Error Message Snippet */}
+                            {item.status === "error" && item.error && (
+                              <p className="text-[11px] text-red-300/80 truncate mt-1">
+                                {item.error}
+                              </p>
+                            )}
                           </div>
 
                           {/* Action Buttons */}
                           <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {/* Individual Retry Button for Failed Tracks */}
+                            {item.status === "error" && (
+                              <button
+                                type="button"
+                                onClick={() => handleRetryTrack(item.id)}
+                                className="px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-semibold flex items-center gap-1 transition-all shadow-sm"
+                                title="Retry conversion"
+                              >
+                                <RotateCw className="w-3 h-3" />
+                                <span>Retry</span>
+                              </button>
+                            )}
+
                             {item.status === "complete" && item.convertedUrl && (
                               <button
                                 type="button"
@@ -866,17 +968,6 @@ export default function AudioConverter() {
                                 title="Re-convert with current 8D settings"
                               >
                                 <RefreshCw className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-
-                            {item.status === "pending" && (
-                              <button
-                                type="button"
-                                onClick={() => handleReconvert(index)}
-                                className="px-2.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-semibold transition-all flex items-center gap-1"
-                              >
-                                <Sparkles className="w-3 h-3" />
-                                <span>Convert</span>
                               </button>
                             )}
 
@@ -971,7 +1062,6 @@ export default function AudioConverter() {
                 <button
                   type="button"
                   onClick={handleLoadDemoTrack}
-                  disabled={isConvertingAny}
                   className="px-3.5 py-2 bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white text-xs font-semibold rounded-xl shadow-md shadow-cyan-500/10 transition-all flex-shrink-0"
                 >
                   Try Demo Song

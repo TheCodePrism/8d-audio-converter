@@ -4,6 +4,8 @@ export interface AudioProcessingOptions {
   bassBoost: number; // dB boost at low frequencies (0 to 10 dB)
   direction: "clockwise" | "counter-clockwise";
   spatialRadius: number; // Virtual distance from listener (1 to 4)
+  verticalOrbit?: boolean; // 16D Helical 3D elevation movement (over head / under chin)
+  centerAnchor?: number; // 0.0 to 0.4 (Center vocal/kick anchor level to keep vocals solid)
 }
 
 export interface Preset {
@@ -40,4 +42,23 @@ export interface YouTubeInfoResponse {
   title: string;
   thumbnail?: string;
   tracks: YouTubeTrack[];
+}
+
+export interface AudioFileItem {
+  id: string;
+  name: string;
+  artist?: string;
+  thumbnail?: string;
+  size?: number;
+  file?: File;
+  originalUrl: string;
+  convertedUrl?: string;
+  status: "pending" | "converting" | "complete" | "error";
+  progress?: number;
+  error?: string;
+  errorDetails?: string;
+  sourceType: "upload" | "youtube" | "demo";
+  sourceUrl?: string;
+  addedAt?: number;
+  rawBuffer?: AudioBuffer;
 }

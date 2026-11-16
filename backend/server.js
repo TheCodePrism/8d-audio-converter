@@ -15,6 +15,12 @@ const app = express();
 // /videoplayback?... proxies the actual audio bytes through the instance.
 const INVIDIOUS_INSTANCES = [
   "yt.chocolatemoo53.com",
+  "invidious.nerdvpn.de",
+  "inv.tux.pizza",
+  "invidious.projectsegfau.lt",
+  "invidious.privacyredirect.com",
+  "iv.melmac.space",
+  "invidious.perennialte.ch",
 ];
 
 // ── Helper: extract YouTube video ID ─────────────────────────────────────────
@@ -273,9 +279,104 @@ function cleanYouTubeUrl(urlStr) {
   }
 }
 
-// ── Health check ──────────────────────────────────────────────────────────────
+// ── Health check & Diagnostics ────────────────────────────────────────────────
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok" });
+  res.json({
+    status: "ok",
+    service: "8d-audio-backend",
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+    nodeVersion: process.version,
+    platform: process.platform,
+    memory: {
+      rssMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+      heapUsedMb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      heapTotalMb: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+    },
+    ytDlp: {
+      binary: getYtDlpPath(),
+      hasCookies: getCookieArgs().length > 0,
+    },
+    invidious: {
+      totalInstances: INVIDIOUS_INSTANCES.length,
+      instances: INVIDIOUS_INSTANCES,
+    },
+  });
+});
+
+// ── Admin: Probe YouTube Extraction ───────────────────────────────────────────
+app.post("/admin/probe", async (req, res) => {
+  const { url } = req.body;
+  if (!url || typeof url !== "string" || !isValidYouTubeUrl(url)) {
+    return res.status(400).json({ error: "Invalid YouTube URL provided." });
+  }
+
+  const logs = [];
+  const startTime = Date.now();
+  const cleanUrl = cleanYouTubeUrl(url);
+  const videoId = extractVideoId(cleanUrl);
+
+  logs.push(`[${new Date().toISOString()}] Canonicalized URL: ${cleanUrl}`);
+  logs.push(`[${new Date().toISOString()}] Extracted Video ID: ${videoId || "(none)"}`);
+
+  let invidiousResult = null;
+  if (videoId) {
+    logs.push(`[${new Date().toISOString()}] Testing Invidious proxy chain...`);
+    for (const instance of INVIDIOUS_INSTANCES) {
+      const instStart = Date.now();
+      try {
+        const apiUrl = `https://${instance}/api/v1/videos/${videoId}`;
+        logs.push(`[${new Date().toISOString()}] Probing ${instance}...`);
+        const apiRes = await fetch(apiUrl, {
+          signal: AbortSignal.timeout(5000),
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; 8DAudioAdminBot/1.0)" },
+        });
+        const elapsed = Date.now() - instStart;
+        if (!apiRes.ok) {
+          logs.push(`[${new Date().toISOString()}] ✕ ${instance} returned HTTP ${apiRes.status} (${elapsed}ms)`);
+          continue;
+        }
+        const data = await apiRes.json();
+        if (data.error) {
+          logs.push(`[${new Date().toISOString()}] ✕ ${instance} error: ${data.error} (${elapsed}ms)`);
+          continue;
+        }
+        const formats = data.adaptiveFormats || [];
+        const preferredItags = ["140", "251", "250", "249", "139"];
+        let audio = preferredItags
+          .map((itag) => formats.find((f) => String(f.itag) === itag && f.url))
+          .find(Boolean) || formats.find((f) => f.type?.startsWith("audio/") && f.url);
+
+        if (audio) {
+          logs.push(
+            `[${new Date().toISOString()}] ✓ ${instance} available! Audio itag=${audio.itag}, type=${audio.type}, bitrate=${audio.bitrate || "unknown"} (${elapsed}ms)`
+          );
+          invidiousResult = {
+            instance,
+            itag: audio.itag,
+            type: audio.type,
+            title: data.title,
+            author: data.author,
+            duration: data.lengthSeconds,
+            proxyUrl: `https://${instance}/videoplayback${new URL(audio.url).search}`,
+          };
+          break;
+        } else {
+          logs.push(`[${new Date().toISOString()}] ✕ ${instance} no suitable audio format found (${elapsed}ms)`);
+        }
+      } catch (e) {
+        logs.push(`[${new Date().toISOString()}] ✕ ${instance} exception: ${e.message}`);
+      }
+    }
+  }
+
+  return res.json({
+    success: !!invidiousResult,
+    videoId,
+    totalTimeMs: Date.now() - startTime,
+    invidiousResult,
+    logs,
+  });
 });
 
 // ── POST /youtube/info ────────────────────────────────────────────────────────

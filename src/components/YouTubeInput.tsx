@@ -213,16 +213,11 @@ export default function YouTubeInput({
               </div>
               <button
                 type="button"
-                disabled={isConverting}
                 onClick={() => handleConvertSingle(info.tracks[0])}
-                className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-red-600 via-rose-600 to-purple-600 hover:from-red-500 hover:to-purple-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-lg shadow-red-500/20 flex items-center justify-center gap-2 transition-all shrink-0"
+                className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-red-600 via-rose-600 to-purple-600 hover:from-red-500 hover:to-purple-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-red-500/20 flex items-center justify-center gap-2 transition-all shrink-0"
               >
-                {isConverting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Sparkles className="w-4 h-4" />
-                )}
-                <span>Import & Convert 8D</span>
+                <Sparkles className="w-4 h-4" />
+                <span>+ Add to 8D Queue</span>
               </button>
             </div>
           )}
@@ -248,13 +243,13 @@ export default function YouTubeInput({
 
                 <button
                   type="button"
-                  disabled={selectedTrackIds.size === 0 || isConverting}
+                  disabled={selectedTrackIds.size === 0}
                   onClick={handleConvertSelected}
                   className="px-4 py-2 bg-gradient-to-r from-red-600 to-purple-600 hover:from-red-500 hover:to-purple-500 disabled:opacity-40 text-white text-xs font-semibold rounded-xl shadow-md flex items-center gap-1.5 transition-all"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>
-                    Import & Convert ({selectedTrackIds.size})
+                    + Queue {selectedTrackIds.size} Tracks
                   </span>
                 </button>
               </div>

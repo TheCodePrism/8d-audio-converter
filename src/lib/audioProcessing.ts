@@ -2,59 +2,83 @@ import { AudioProcessingOptions, Preset } from "@/types";
 
 export const DEFAULT_OPTIONS: AudioProcessingOptions = {
   rotationSpeed: 12, // 12 seconds per full revolution
-  reverbLevel: 0.15, // 15% wet reverb
+  reverbLevel: 0.16, // 16% wet reverb
   bassBoost: 4, // +4 dB bass boost
   direction: "clockwise",
   spatialRadius: 2.5,
+  verticalOrbit: true, // 16D 3D vertical elevation wave
+  centerAnchor: 0.18, // Anchors lead vocals & kick in center
 };
 
 export const PRESETS: Preset[] = [
   {
+    id: "helical-16d",
+    name: "16D Celestial Orbit",
+    description: "Spherical 3D elevation over and around your head with rooted center vocals and ethereal room space.",
+    options: {
+      rotationSpeed: 11,
+      reverbLevel: 0.20,
+      bassBoost: 5,
+      direction: "clockwise",
+      spatialRadius: 2.8,
+      verticalOrbit: true,
+      centerAnchor: 0.22,
+    },
+  },
+  {
     id: "classic-8d",
     name: "Classic 8D",
-    description: "Balanced rotation speed with immersive spatial reverb and moderate bass boost.",
+    description: "Traditional 360° horizontal ear-to-ear rotation with balanced room reverb.",
     options: {
       rotationSpeed: 12,
       reverbLevel: 0.15,
       bassBoost: 4,
       direction: "clockwise",
       spatialRadius: 2.5,
+      verticalOrbit: false,
+      centerAnchor: 0.05,
+    },
+  },
+  {
+    id: "vocal-arena",
+    name: "Vocal Arena (Live)",
+    description: "Lead vocal stays grounded right in front of you while instruments and synths orbit in an open arena.",
+    options: {
+      rotationSpeed: 14,
+      reverbLevel: 0.26,
+      bassBoost: 4,
+      direction: "clockwise",
+      spatialRadius: 3.0,
+      verticalOrbit: true,
+      centerAnchor: 0.35,
+    },
+  },
+  {
+    id: "deep-bass",
+    name: "Deep Bass Orbit",
+    description: "Heavy low-end punch (+8dB) with an anchored center kick drum for maximum impact.",
+    options: {
+      rotationSpeed: 9,
+      reverbLevel: 0.10,
+      bassBoost: 8,
+      direction: "counter-clockwise",
+      spatialRadius: 2.2,
+      verticalOrbit: false,
+      centerAnchor: 0.25,
     },
   },
   {
     id: "slow-ambient",
     name: "Slow Ambient",
-    description: "Relaxed 20s orbit with spacious concert-hall reverberation.",
+    description: "Dreamy 20s celestial sweep with expansive concert hall reverberation.",
     options: {
       rotationSpeed: 20,
-      reverbLevel: 0.28,
+      reverbLevel: 0.30,
       bassBoost: 3,
       direction: "clockwise",
-      spatialRadius: 3.2,
-    },
-  },
-  {
-    id: "fast-intense",
-    name: "Fast & Dynamic",
-    description: "Fast 7s orbit with tight room reverb and punchy bass.",
-    options: {
-      rotationSpeed: 7,
-      reverbLevel: 0.12,
-      bassBoost: 6,
-      direction: "clockwise",
-      spatialRadius: 2.2,
-    },
-  },
-  {
-    id: "bass-heavy",
-    name: "Deep Bass Orbit",
-    description: "Heavy low-end emphasis (+8dB) with counter-clockwise rotation.",
-    options: {
-      rotationSpeed: 10,
-      reverbLevel: 0.10,
-      bassBoost: 8,
-      direction: "counter-clockwise",
-      spatialRadius: 2.0,
+      spatialRadius: 3.4,
+      verticalOrbit: true,
+      centerAnchor: 0.15,
     },
   },
 ];
@@ -224,46 +248,68 @@ export async function process8DAudio(
   masterLimiter.attack.value = 0.012; // 12ms preserves transient snap
   masterLimiter.release.value = 0.15;
 
+  // 8. Phantom Center Vocal & Kick Anchor (Mid-Channel Grounding)
+  // Keeps lead vocal and kick drum grounded in front while spatial instruments orbit in 3D
+  const centerLevel = Math.max(0, Math.min(0.45, options.centerAnchor ?? 0.18));
+  if (centerLevel > 0) {
+    const centerGain = offlineContext.createGain();
+    centerGain.gain.value = centerLevel * 0.75;
+    bassFilter.connect(centerGain);
+    centerGain.connect(masterLimiter);
+  }
+
   dryGain.connect(masterLimiter);
   convolver.connect(masterLimiter);
   masterLimiter.connect(offlineContext.destination);
 
-  // --- Dynamic 360-Degree Circular Orbit Automation with Stereo Spread ---
+  // --- Dynamic 16D Helical 3D Trajectory with Stereo Spread & Distance Modulation ---
   const speed = Math.max(3, options.rotationSpeed);
   const radius = Math.max(1, options.spatialRadius);
   const dirMultiplier = options.direction === "counter-clockwise" ? -1 : 1;
   const stereoAngularSpread = 0.28; // ~16 degree angular spread keeps the soundstage wide
+  const isVertical = options.verticalOrbit ?? true;
+  const verticalSpeed = speed * 1.35; // Non-harmonic ratio creates an evolving 3D Lissajous spatial orbit
 
   const stepInterval = 0.08; // 12.5 trajectory updates per sec: smooth spatial orbit with 40% less automation overhead on mobile
   const hasAudioParamPosition =
     leftPanner.positionX && typeof leftPanner.positionX.setValueAtTime === "function";
 
   if (hasAudioParamPosition) {
-    leftPanner.positionY.setValueAtTime(0, 0);
-    rightPanner.positionY.setValueAtTime(0, 0);
-
     for (let t = 0; t < duration; t += stepInterval) {
       const baseAngle = dirMultiplier * ((2 * Math.PI * t) / speed);
+
+      // Organic elliptical orbit: dips slightly closer to ears on sides (proximity warmth), further in rear
+      const sinBase = Math.sin(baseAngle);
+      const dynamicRadius = radius * (0.92 + 0.16 * (sinBase * sinBase));
+
+      // 16D Vertical elevation: sweeps above head (+1.0m) and below ear level (-0.4m)
+      const elevationY = isVertical ? 0.95 * Math.sin((2 * Math.PI * t) / verticalSpeed) : 0;
 
       // Left and Right channels maintain independent orbital coordinates
       const angleL = baseAngle - stereoAngularSpread;
       const angleR = baseAngle + stereoAngularSpread;
 
-      const xL = radius * Math.sin(angleL);
-      const zL = -radius * Math.cos(angleL);
+      const xL = dynamicRadius * Math.sin(angleL);
+      const zL = -dynamicRadius * Math.cos(angleL);
 
-      const xR = radius * Math.sin(angleR);
-      const zR = -radius * Math.cos(angleR);
+      const xR = dynamicRadius * Math.sin(angleR);
+      const zR = -dynamicRadius * Math.cos(angleR);
 
       if (t === 0) {
         leftPanner.positionX.setValueAtTime(xL, 0);
+        leftPanner.positionY.setValueAtTime(elevationY, 0);
         leftPanner.positionZ.setValueAtTime(zL, 0);
+
         rightPanner.positionX.setValueAtTime(xR, 0);
+        rightPanner.positionY.setValueAtTime(elevationY, 0);
         rightPanner.positionZ.setValueAtTime(zR, 0);
       } else {
         leftPanner.positionX.linearRampToValueAtTime(xL, t);
+        leftPanner.positionY.linearRampToValueAtTime(elevationY, t);
         leftPanner.positionZ.linearRampToValueAtTime(zL, t);
+
         rightPanner.positionX.linearRampToValueAtTime(xR, t);
+        rightPanner.positionY.linearRampToValueAtTime(elevationY, t);
         rightPanner.positionZ.linearRampToValueAtTime(zR, t);
       }
     }
@@ -271,10 +317,11 @@ export async function process8DAudio(
     // Fallback for older Web Audio implementations
     for (let t = 0; t < duration; t += stepInterval) {
       const baseAngle = dirMultiplier * ((2 * Math.PI * t) / speed);
+      const elevationY = isVertical ? 0.95 * Math.sin((2 * Math.PI * t) / (speed * 1.35)) : 0;
       const angleL = baseAngle - stereoAngularSpread;
       const angleR = baseAngle + stereoAngularSpread;
-      (leftPanner as any).setPosition(radius * Math.sin(angleL), 0, -radius * Math.cos(angleL));
-      (rightPanner as any).setPosition(radius * Math.sin(angleR), 0, -radius * Math.cos(angleR));
+      (leftPanner as any).setPosition(radius * Math.sin(angleL), elevationY, -radius * Math.cos(angleL));
+      (rightPanner as any).setPosition(radius * Math.sin(angleR), elevationY, -radius * Math.cos(angleR));
     }
   }
 

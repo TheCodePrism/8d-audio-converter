@@ -52,6 +52,8 @@ export default function UploadForm({
     if (e.target.files && e.target.files.length > 0) {
       const files = Array.from(e.target.files);
       onUpload(files);
+      // Reset input value so re-selecting the same file works
+      e.target.value = "";
     }
   };
 
@@ -74,38 +76,41 @@ export default function UploadForm({
         className="hidden"
         accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac"
         onChange={handleChange}
-        disabled={isConverting}
         multiple
       />
 
       <div className="space-y-4">
         <div className="flex justify-center">
-          {isConverting ? (
-            <div className="p-4 bg-cyan-500/10 rounded-2xl border border-cyan-500/30">
-              <Loader2 className="h-10 w-10 text-cyan-400 animate-spin" />
-            </div>
-          ) : (
-            <div className="p-4 bg-gradient-to-tr from-cyan-500/10 via-purple-500/10 to-indigo-500/10 rounded-2xl border border-slate-700/60 group-hover:scale-105 group-hover:border-cyan-500/50 transition-all shadow-lg">
-              <Upload className="h-10 w-10 text-cyan-400" />
-            </div>
-          )}
+          <div className="p-4 bg-gradient-to-tr from-cyan-500/10 via-purple-500/10 to-indigo-500/10 rounded-2xl border border-slate-700/60 group-hover:scale-105 group-hover:border-cyan-500/50 transition-all shadow-lg">
+            <Upload className="h-10 w-10 text-cyan-400" />
+          </div>
         </div>
 
         <div className="space-y-1.5">
           <h3 className="text-base font-semibold text-slate-100 flex items-center justify-center gap-2">
-            <span>{isConverting ? "Processing Audio Engine..." : "Drop audio files here or click to browse"}</span>
+            <span>Drop audio files here or click to browse</span>
+            {isConverting && (
+              <span className="text-[11px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Queue Processing
+              </span>
+            )}
           </h3>
           <p className="text-xs text-slate-400 max-w-md mx-auto">
-            Lossless in-browser conversion. Your audio never leaves your device.
+            Lossless in-browser conversion. Add files anytime — queued automatically.
           </p>
-          <div className="pt-2 flex flex-wrap items-center justify-center gap-2 text-[11px] text-slate-400 font-mono">
-            <span className="px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800">
-              MP3, WAV, M4A, OGG, FLAC
-            </span>
-            <span className="px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800">
-              Up to {maxFileSize / 1024 / 1024}MB
-            </span>
-          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] font-mono text-slate-400 pt-1">
+          <span className="px-2.5 py-1 bg-slate-900/80 rounded-lg border border-slate-800">
+            MP3, WAV, M4A, FLAC, OGG
+          </span>
+          <span className="px-2.5 py-1 bg-slate-900/80 rounded-lg border border-slate-800">
+            Max {maxFileSize / 1024 / 1024}MB
+          </span>
+          <span className="px-2.5 py-1 bg-slate-900/80 rounded-lg border border-slate-800">
+            Batch Upload Supported
+          </span>
         </div>
       </div>
     </div>

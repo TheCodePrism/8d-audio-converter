@@ -104,8 +104,12 @@ export default function OrbitVisualizer({
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Sound Orb Coordinates
+      // Sound Orb Coordinates with 16D vertical perspective scaling
       const currentAngle = angleRef.current;
+      const isVertical = options.verticalOrbit !== false;
+      const elevationSin = isVertical ? Math.sin((currentAngle * speed) / (speed * 1.35)) : 0;
+      // When sound is elevated above listener, beacon has a slightly larger overhead perspective
+      const perspectiveScale = 1.0 + elevationSin * 0.22;
       const orbX = centerX + radius * Math.sin(currentAngle);
       const orbY = centerY - radius * Math.cos(currentAngle);
 
@@ -119,7 +123,7 @@ export default function OrbitVisualizer({
 
         ctx.fillStyle = `rgba(56, 189, 248, ${alpha})`;
         ctx.beginPath();
-        ctx.arc(tx, ty, 2 + (trailCount - i) * 0.35, 0, 2 * Math.PI);
+        ctx.arc(tx, ty, (2 + (trailCount - i) * 0.35) * perspectiveScale, 0, 2 * Math.PI);
         ctx.fill();
       }
 
@@ -134,14 +138,15 @@ export default function OrbitVisualizer({
       ctx.lineTo(orbX, orbY);
       ctx.stroke();
 
-      // Rotating Audio Beacon Outer Glow
-      const orbGlow = ctx.createRadialGradient(orbX, orbY, 2, orbX, orbY, 16);
+      // Rotating Audio Beacon Outer Glow (pulses with 16D elevation)
+      const glowRadius = Math.max(8, 16 * perspectiveScale);
+      const orbGlow = ctx.createRadialGradient(orbX, orbY, 2, orbX, orbY, glowRadius);
       orbGlow.addColorStop(0, "#38bdf8");
-      orbGlow.addColorStop(0.4, isPlaying ? "#a855f7" : "#0284c7");
+      orbGlow.addColorStop(0.4, isPlaying ? (isVertical ? "#c084fc" : "#a855f7") : "#0284c7");
       orbGlow.addColorStop(1, "rgba(56, 189, 248, 0)");
       ctx.fillStyle = orbGlow;
       ctx.beginPath();
-      ctx.arc(orbX, orbY, 16, 0, 2 * Math.PI);
+      ctx.arc(orbX, orbY, glowRadius, 0, 2 * Math.PI);
       ctx.fill();
 
       // Sound wave ripples emitting from orb (only when actively playing to save mobile battery)
@@ -150,14 +155,14 @@ export default function OrbitVisualizer({
         ctx.strokeStyle = `rgba(56, 189, 248, ${1 - pulse})`;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.arc(orbX, orbY, 6 + pulse * 14, 0, 2 * Math.PI);
+        ctx.arc(orbX, orbY, (6 + pulse * 14) * perspectiveScale, 0, 2 * Math.PI);
         ctx.stroke();
       }
 
       // Center bright core of orb
       ctx.fillStyle = "#ffffff";
       ctx.beginPath();
-      ctx.arc(orbX, orbY, 4, 0, 2 * Math.PI);
+      ctx.arc(orbX, orbY, 4 * perspectiveScale, 0, 2 * Math.PI);
       ctx.fill();
 
       // Cardinal directional markers
@@ -192,7 +197,9 @@ export default function OrbitVisualizer({
       <div className="w-full flex items-center justify-between text-[11px] font-mono text-slate-400 px-2 pb-1 border-b border-slate-800/60 mb-2">
         <div className="flex items-center gap-1.5 text-cyan-400">
           <Activity className={`w-3.5 h-3.5 ${isPlaying ? "animate-pulse" : ""}`} />
-          <span className="text-[10px] sm:text-[11px]">360° HRTF RADAR</span>
+          <span className="text-[10px] sm:text-[11px]">
+            {options.verticalOrbit !== false ? "16D SPHERICAL RADAR" : "360° HRTF RADAR"}
+          </span>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-[11px]">
           <span ref={angleTextRef} className="text-purple-400 font-semibold">0°</span>
@@ -222,13 +229,23 @@ export default function OrbitVisualizer({
       </div>
 
       {/* Bottom Status pill */}
-      <div className="mt-2 flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 bg-slate-900/90 rounded-full border border-slate-800 text-[10px] sm:text-[11px] font-medium text-slate-300">
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 bg-slate-900/90 rounded-full border border-slate-800 text-[10px] sm:text-[11px] font-medium text-slate-300">
         <span className="flex items-center gap-1 text-cyan-400">
           <Compass className="w-3 h-3" />
-          {options.rotationSpeed}s / loop
+          {options.rotationSpeed}s
         </span>
         <span className="text-slate-600">•</span>
-        <span className="capitalize text-purple-300">{options.direction}</span>
+        <span className="text-purple-300 font-mono">
+          {options.verticalOrbit !== false ? "16D ↕" : "8D ↔"}
+        </span>
+        {(options.centerAnchor ?? 0.18) > 0 && (
+          <>
+            <span className="text-slate-600">•</span>
+            <span className="text-amber-300">
+              Vocal {Math.round((options.centerAnchor ?? 0.18) * 100)}%
+            </span>
+          </>
+        )}
         <span className="text-slate-600">•</span>
         <span className="text-emerald-300">Reverb {Math.round(options.reverbLevel * 100)}%</span>
       </div>
