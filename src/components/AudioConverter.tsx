@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -38,7 +39,6 @@ import {
 import AudioPlayer from "./AudioPlayer";
 import UploadForm from "./UploadForm";
 import AudioSettings from "./AudioSettings";
-import OrbitVisualizer from "./OrbitVisualizer";
 import YouTubeInput from "./YouTubeInput";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AudioProcessingOptions, AudioFileItem, YouTubeTrack } from "@/types";
@@ -1214,7 +1214,7 @@ export default function AudioConverter() {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* ========================================================= */}
-        {/* LEFT COLUMN: THE 8D SPATIAL PLAYER & RADAR DECK (6 COLS)  */}
+        {/* LEFT COLUMN: THE 8D/16D SPATIAL MUSIC PLAYER (6 COLS)     */}
         {/* ========================================================= */}
         <div className={`space-y-5 lg:col-span-6 ${mobileTab === "player" ? "block" : "hidden lg:block"}`}>
           {/* Deck Container */}
@@ -1222,7 +1222,7 @@ export default function AudioConverter() {
             {/* Top Tag & Spatial Status */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-4">
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                <span className={`w-2.5 h-2.5 rounded-full ${isPlaying ? "bg-emerald-400 animate-ping" : "bg-cyan-400"}`} />
                 <span className="text-xs font-mono font-bold tracking-wider text-slate-300 uppercase">
                   360° HRTF Binaural Deck
                 </span>
@@ -1232,26 +1232,18 @@ export default function AudioConverter() {
               </span>
             </div>
 
-            {/* Orbit Radar HUD & Visualizer */}
-            <div className="mb-4 sm:mb-5 flex justify-center">
-              <OrbitVisualizer
-                isPlaying={isPlaying}
-                options={options}
-                currentTime={activePlaybackTime}
-              />
-            </div>
-
-            {/* Audio Player Transport & Controls */}
+            {/* Audio Player with Transparent 360°/16D Radar Overlay */}
             {activeTrack ? (
               <AudioPlayer
                 src={activeTrack.convertedUrl || activeTrack.originalUrl}
                 originalSrc={activeTrack.originalUrl}
                 title={activeTrack.name}
-                artist={activeTrack.artist || "8D Audio Converter"}
+                artist={activeTrack.artist || "8D Audio Master"}
                 thumbnail={activeTrack.thumbnail}
                 sourceUrl={getYouTubeUrl(activeTrack) || activeTrack.sourceUrl}
                 onCopySourceUrl={(url) => copyToClipboard(url, "YouTube link")}
                 is8DReady={!!activeTrack.convertedUrl}
+                options={options}
                 isShuffle={isShuffle}
                 onToggleShuffle={() => setIsShuffle((prev) => !prev)}
                 isLooping={isLooping}
@@ -1260,27 +1252,38 @@ export default function AudioConverter() {
                 onPlayStateChange={setIsPlaying}
                 onNext={handleNextTrack}
                 onPrev={handlePrevTrack}
+                onDownload={
+                  activeTrack.convertedUrl
+                    ? () => handleDownload(activeTrack.convertedUrl!, activeTrack.name)
+                    : undefined
+                }
+                onSelectPreset={(pOptions) => {
+                  setOptions(pOptions);
+                  if (activeTrack && activeTrack.rawBuffer && activeTrack.status === "complete") {
+                    handleReconvert(currentTrackIndex, pOptions);
+                  }
+                }}
               />
             ) : (
               /* Idle Deck State */
-              <div className="p-6 sm:p-8 text-center bg-slate-950/60 border border-slate-800 rounded-2xl space-y-3">
-                <div className="w-12 h-12 sm:w-14 sm:h-14 mx-auto rounded-full bg-slate-900 flex items-center justify-center text-slate-500 border border-slate-800">
-                  <Disc3 className="w-7 h-7 sm:w-8 sm:h-8 animate-spin" style={{ animationDuration: "12s" }} />
-                </div>
-                <h4 className="text-sm font-semibold text-slate-200">
-                  No Track Loaded in Deck
-                </h4>
-                <p className="text-xs text-slate-400 max-w-xs mx-auto">
-                  Add music from the studio tabs, or try the instant demo track.
-                </p>
+              <div className="space-y-4">
+                <AudioPlayer
+                  src=""
+                  title="8D Spatial Soundscape"
+                  artist="Load tracks from YouTube, local files, or try the instant demo track"
+                  thumbnail={undefined}
+                  is8DReady={false}
+                  options={options}
+                  onSelectPreset={(pOptions) => setOptions(pOptions)}
+                />
                 <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
                   <button
                     type="button"
                     onClick={handleLoadDemoTrack}
-                    className="inline-flex items-center gap-2 px-3.5 sm:px-4 py-2 bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-cyan-500/20 transition-all"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-cyan-500/20 transition-all"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
-                    <span>Try Demo Song</span>
+                    <span>Try Instant Demo Song</span>
                   </button>
                   <button
                     type="button"
@@ -1288,51 +1291,14 @@ export default function AudioConverter() {
                       setMobileTab("studio");
                       setActiveStudioTab("add");
                     }}
-                    className="lg:hidden inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition-all"
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition-all"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Add Music</span>
+                    <span>Add Music to Queue</span>
                   </button>
                 </div>
               </div>
             )}
-
-            {/* Quick 8D Presets Pills */}
-            <div className="mt-4 pt-3 border-t border-slate-800/80">
-              <span className="block text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-2">
-                Quick 8D & 16D Presets:
-              </span>
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:flex-wrap no-scrollbar">
-                {PRESETS.map((p) => {
-                  const isCurrent =
-                    options.rotationSpeed === p.options.rotationSpeed &&
-                    options.verticalOrbit === p.options.verticalOrbit;
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => {
-                        setOptions(p.options);
-                        if (
-                          activeTrack &&
-                          activeTrack.rawBuffer &&
-                          activeTrack.status === "complete"
-                        ) {
-                          handleReconvert(currentTrackIndex, p.options);
-                        }
-                      }}
-                      className={`text-xs px-2.5 py-1 rounded-lg border whitespace-nowrap transition-all ${
-                        isCurrent
-                          ? "bg-cyan-500/20 border-cyan-400 text-cyan-200 ring-1 ring-cyan-500/30"
-                          : "bg-slate-950/40 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
-                      }`}
-                    >
-                      {p.name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
           </div>
         </div>
 
@@ -1517,25 +1483,38 @@ export default function AudioConverter() {
                         }`}
                       >
                         <div className="flex items-center gap-3">
-                          {/* Play / Select in Deck */}
+                          {/* Track Thumbnail with Play/Pause Overlay */}
                           <button
                             type="button"
                             onClick={() => {
                               setCurrentTrackIndex(index);
                               setMobileTab("player");
                             }}
-                            className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${
-                              isCurrent && isPlaying
-                                ? "bg-cyan-500 text-slate-950 font-bold"
-                                : "bg-slate-800 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-400"
-                            }`}
+                            className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden bg-slate-900 border border-slate-800 shrink-0 flex items-center justify-center group/cover shadow-md transition-transform active:scale-95"
                             title="Load in deck"
                           >
-                            {isCurrent && isPlaying ? (
-                              <Pause className="w-4 h-4 fill-current" />
+                            {item.thumbnail ? (
+                              <img
+                                src={item.thumbnail}
+                                alt={item.name}
+                                className="w-full h-full object-cover transition-transform duration-300 group-hover/cover:scale-110"
+                              />
                             ) : (
-                              <Play className="w-4 h-4 fill-current ml-0.5" />
+                              <Headphones className="w-5 h-5 text-slate-500" />
                             )}
+                            <div
+                              className={`absolute inset-0 flex items-center justify-center transition-all ${
+                                isCurrent && isPlaying
+                                  ? "bg-cyan-950/70 text-cyan-300 backdrop-blur-[1px]"
+                                  : "bg-slate-950/40 text-white opacity-0 group-hover/cover:opacity-100 backdrop-blur-[1px]"
+                              }`}
+                            >
+                              {isCurrent && isPlaying ? (
+                                <Pause className="w-5 h-5 fill-current" />
+                              ) : (
+                                <Play className="w-5 h-5 fill-current ml-0.5" />
+                              )}
+                            </div>
                           </button>
 
                           {/* Track Info */}
@@ -1546,9 +1525,22 @@ export default function AudioConverter() {
                               setMobileTab("player");
                             }}
                           >
-                            <h4 className="text-xs md:text-sm font-semibold text-slate-100 truncate">
-                              {item.name}
-                            </h4>
+                            <div className="flex items-center gap-1.5">
+                              <h4
+                                className={`text-xs md:text-sm font-semibold truncate transition-colors ${
+                                  isCurrent ? "text-cyan-300 font-bold" : "text-slate-100"
+                                }`}
+                              >
+                                {item.name}
+                              </h4>
+                              {isCurrent && isPlaying && (
+                                <span className="flex items-end gap-0.5 h-3 shrink-0 ml-1" title="Now playing">
+                                  <span className="w-0.5 h-3 bg-cyan-400 animate-pulse rounded-full" />
+                                  <span className="w-0.5 h-2 bg-purple-400 animate-pulse rounded-full" style={{ animationDelay: "150ms" }} />
+                                  <span className="w-0.5 h-3.5 bg-cyan-300 animate-pulse rounded-full" style={{ animationDelay: "300ms" }} />
+                                </span>
+                              )}
+                            </div>
                             <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
                               <span className="truncate">{item.artist || "Audio"}</span>
                               {ytLink && (
