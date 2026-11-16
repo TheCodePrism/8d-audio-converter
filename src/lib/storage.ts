@@ -228,3 +228,64 @@ export async function importTracksFromPackFile(
 
   return importedTracks;
 }
+
+// ── Persistent Active Queue Manifest ───────────────────────────────────────────
+// Allows in-flight and pending queues (like imported 30+ track YouTube playlists)
+// to survive page reloads and automatically resume processing without losing the queue.
+
+const QUEUE_STORAGE_KEY = "8d_active_queue_manifest";
+
+export interface PersistedQueueItem {
+  id: string;
+  name: string;
+  artist?: string;
+  thumbnail?: string;
+  size?: number;
+  status: "pending" | "converting" | "complete" | "error";
+  progress?: number;
+  sourceType: "upload" | "youtube" | "demo";
+  sourceUrl?: string;
+  addedAt?: number;
+  retryCount?: number;
+}
+
+export function saveQueueManifest(items: AudioFileItem[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    const serialized: PersistedQueueItem[] = items.map((f) => ({
+      id: f.id,
+      name: f.name,
+      artist: f.artist,
+      thumbnail: f.thumbnail,
+      size: f.size,
+      // If refreshed mid-conversion, reset to pending so it resumes cleanly
+      status: f.status === "converting" ? "pending" : f.status,
+      progress: f.status === "complete" ? 100 : 0,
+      sourceType: f.sourceType,
+      sourceUrl: f.sourceUrl,
+      addedAt: f.addedAt,
+      retryCount: f.retryCount,
+    }));
+    localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(serialized));
+  } catch (e) {
+    console.warn("Could not save queue manifest to localStorage:", e);
+  }
+}
+
+export function getQueueManifest(): PersistedQueueItem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function clearQueueManifest(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(QUEUE_STORAGE_KEY);
+  } catch {}
+}
+

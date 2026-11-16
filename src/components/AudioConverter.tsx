@@ -53,6 +53,9 @@ import {
   exportTracksToPackFile,
   importTracksFromPackFile,
   SavedTrackRecord,
+  saveQueueManifest,
+  getQueueManifest,
+  clearQueueManifest,
 } from "@/lib/storage";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
@@ -89,6 +92,7 @@ export default function AudioConverter() {
   const wavBlobsRef = useRef<Map<string, Blob>>(new Map());
   const isProcessingQueueRef = useRef<boolean>(false);
   const packFileInputRef = useRef<HTMLInputElement>(null);
+  const isHydratedRef = useRef<boolean>(false);
 
   const registerUrl = useCallback((url: string) => {
     createdUrlsRef.current.push(url);
@@ -106,41 +110,117 @@ export default function AudioConverter() {
     }
   }, []);
 
-  // Auto-restore saved tracks from IndexedDB into Queue on page load / refresh
+  // Auto-restore full queue (both in-flight/pending YouTube tracks and completed tracks) on mount/refresh
   useEffect(() => {
     let isMounted = true;
-    getSavedTracks().then((tracks) => {
-      if (!isMounted || !tracks || tracks.length === 0) return;
-      setSavedLibrary(tracks);
-      setAudioFiles((prev) => {
-        // If queue already has tracks loaded, do not overwrite
-        if (prev.length > 0) return prev;
-        return tracks.map((record) => {
-          const audioUrl = registerUrl(URL.createObjectURL(record.blob));
-          wavBlobsRef.current.set(record.id, record.blob);
-          return {
-            id: record.id,
-            name: record.name,
-            artist: record.artist || "8D Audio Master",
-            thumbnail: record.thumbnail,
-            size: record.size,
-            originalUrl: audioUrl,
-            convertedUrl: audioUrl,
-            status: "complete",
-            progress: 100,
-            sourceType: "upload",
-            addedAt: record.savedAt,
-          };
+
+    async function restoreSession() {
+      try {
+        const savedTracks = await getSavedTracks();
+        if (!isMounted) return;
+        setSavedLibrary(savedTracks);
+
+        const savedMap = new Map<string, SavedTrackRecord>();
+        for (const t of savedTracks) {
+          savedMap.set(t.id, t);
+        }
+
+        const queueManifest = getQueueManifest();
+
+        setAudioFiles((prev) => {
+          if (prev.length > 0) return prev; // If already populated in-memory, keep it
+
+          if (queueManifest.length > 0) {
+            const restored: AudioFileItem[] = [];
+            for (const item of queueManifest) {
+              const saved = savedMap.get(item.id);
+              if (saved) {
+                // Completed track: restore with cached MP3 blob
+                const audioUrl = registerUrl(URL.createObjectURL(saved.blob));
+                wavBlobsRef.current.set(item.id, saved.blob);
+                restored.push({
+                  id: item.id,
+                  name: item.name,
+                  artist: item.artist || "8D Audio Master",
+                  thumbnail: item.thumbnail,
+                  size: saved.size,
+                  originalUrl: audioUrl,
+                  convertedUrl: audioUrl,
+                  status: "complete",
+                  progress: 100,
+                  sourceType: item.sourceType,
+                  sourceUrl: item.sourceUrl,
+                  addedAt: item.addedAt || saved.savedAt,
+                });
+              } else if (item.sourceType === "youtube" || item.sourceType === "demo") {
+                // Pending/incomplete track: restore as pending so background worker resumes it
+                restored.push({
+                  id: item.id,
+                  name: item.name,
+                  artist: item.artist || "YouTube Music",
+                  thumbnail: item.thumbnail,
+                  size: item.size,
+                  originalUrl: "",
+                  sourceUrl: item.sourceUrl,
+                  status: item.status === "error" ? "error" : "pending",
+                  progress: 0,
+                  sourceType: item.sourceType,
+                  addedAt: item.addedAt || Date.now(),
+                  retryCount: item.retryCount || 0,
+                });
+              }
+            }
+            if (restored.length > 0) {
+              isHydratedRef.current = true;
+              return restored;
+            }
+          }
+
+          // Fallback: If no manifest exists, load all completed saved tracks
+          if (savedTracks.length > 0) {
+            const restored: AudioFileItem[] = savedTracks.map((record) => {
+              const audioUrl = registerUrl(URL.createObjectURL(record.blob));
+              wavBlobsRef.current.set(record.id, record.blob);
+              return {
+                id: record.id,
+                name: record.name,
+                artist: record.artist || "8D Audio Master",
+                thumbnail: record.thumbnail,
+                size: record.size,
+                originalUrl: audioUrl,
+                convertedUrl: audioUrl,
+                status: "complete",
+                progress: 100,
+                sourceType: "upload",
+                addedAt: record.savedAt,
+              };
+            });
+            isHydratedRef.current = true;
+            return restored;
+          }
+
+          isHydratedRef.current = true;
+          return [];
         });
-      });
-    }).catch((err) => {
-      console.warn("Could not auto-restore saved tracks on mount:", err);
-    });
+      } catch (err) {
+        console.warn("Could not auto-restore session queue on mount:", err);
+      } finally {
+        isHydratedRef.current = true;
+      }
+    }
+
+    restoreSession();
 
     return () => {
       isMounted = false;
     };
   }, [registerUrl]);
+
+  // Persist active queue manifest to localStorage whenever the queue updates
+  useEffect(() => {
+    if (!isHydratedRef.current) return;
+    saveQueueManifest(audioFiles);
+  }, [audioFiles]);
 
   useEffect(() => {
     const urls = createdUrlsRef.current;
@@ -1115,6 +1195,7 @@ export default function AudioConverter() {
                         onClick={async () => {
                           setAudioFiles([]);
                           setCurrentTrackIndex(0);
+                          clearQueueManifest();
                           await clearAllSavedTracks();
                           await refreshSavedLibrary();
                         }}
