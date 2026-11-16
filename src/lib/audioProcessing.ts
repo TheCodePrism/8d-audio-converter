@@ -534,7 +534,7 @@ export function audioBufferToMp3(audioBuffer: AudioBuffer, kbps = 192): Blob {
   const flushed = encoder.flush();
   if (flushed.length > 0) mp3Parts.push(flushed);
 
-  return new Blob(mp3Parts, { type: "audio/mpeg" });
+  return new Blob(mp3Parts as unknown as BlobPart[], { type: "audio/mpeg" });
 }
 
 
