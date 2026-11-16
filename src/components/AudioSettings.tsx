@@ -12,6 +12,8 @@ import {
   Compass,
   Radio,
   Headphones,
+  Zap,
+  Award,
 } from "lucide-react";
 import { AudioProcessingOptions } from "@/types";
 import { PRESETS } from "@/lib/audioProcessing";
@@ -34,7 +36,10 @@ export default function AudioSettings({
     setSelectedPresetId(presetId);
     const preset = PRESETS.find((p) => p.id === presetId);
     if (preset) {
-      onChange(preset.options);
+      onChange({
+        ...preset.options,
+        exportQuality: options.exportQuality || "192",
+      });
     }
   };
 
@@ -319,6 +324,80 @@ export default function AudioSettings({
               <p className="text-[10px] text-slate-500">
                 Keeps vocals and kick drum grounded in front while spatial instruments orbit in 3D.
               </p>
+            </div>
+          </div>
+
+          {/* Audio Export & Download Quality Selector */}
+          <div className="pt-4 border-t border-slate-800/80 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400">
+                Audio Export & Download Quality
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20">
+                {options.exportQuality === "320" ? "320 kbps (Studio)" : "192 kbps (Compact)"}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Option 1: 192 kbps */}
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => handleOptionChange("exportQuality", "192")}
+                className={`p-3.5 rounded-xl border text-left transition-all relative ${
+                  (options.exportQuality || "192") === "192"
+                    ? "border-cyan-500 bg-cyan-500/10 text-cyan-200 ring-1 ring-cyan-500 shadow-md shadow-cyan-500/10"
+                    : "border-slate-800 hover:border-slate-700 bg-slate-950/40 text-slate-300"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-semibold text-xs">
+                    <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>MP3 – Compact</span>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300">
+                    192 kbps
+                  </span>
+                </div>
+                <div className="mt-1.5 space-y-0.5">
+                  <p className="text-[11px] text-slate-300 font-medium">
+                    Default • ~5 MB / 4-min song
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    Fastest loading, ultra-smooth on mobile data, transparent fidelity.
+                  </p>
+                </div>
+              </button>
+
+              {/* Option 2: 320 kbps */}
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => handleOptionChange("exportQuality", "320")}
+                className={`p-3.5 rounded-xl border text-left transition-all relative ${
+                  options.exportQuality === "320"
+                    ? "border-purple-500 bg-purple-500/10 text-purple-200 ring-1 ring-purple-500 shadow-md shadow-purple-500/10"
+                    : "border-slate-800 hover:border-slate-700 bg-slate-950/40 text-slate-300"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-semibold text-xs">
+                    <Award className="w-3.5 h-3.5 text-purple-400" />
+                    <span>MP3 – High Fidelity</span>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">
+                    320 kbps
+                  </span>
+                </div>
+                <div className="mt-1.5 space-y-0.5">
+                  <p className="text-[11px] text-purple-200 font-medium">
+                    Audiophile • ~9 MB / 4-min song
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    Maximum possible MP3 quality, crystal studio details, strictly ≤ 15 MB.
+                  </p>
+                </div>
+              </button>
             </div>
           </div>
         </div>

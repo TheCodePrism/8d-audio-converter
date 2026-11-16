@@ -237,7 +237,8 @@ export default function AudioConverter() {
 
         updateItemProgress(item.id, 85);
         const processedBuffer = await process8DAudio(decodedBuffer, options);
-        const wavBlob = audioBufferToMp3(processedBuffer);
+        const bitrate = options.exportQuality === "320" ? 320 : 192;
+        const wavBlob = audioBufferToMp3(processedBuffer, bitrate);
         const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
         wavBlobsRef.current.set(item.id, wavBlob);
 
@@ -496,7 +497,8 @@ export default function AudioConverter() {
 
       try {
         const processedBuffer = await process8DAudio(target.rawBuffer, opts);
-        const wavBlob = audioBufferToMp3(processedBuffer);
+        const bitrate = opts.exportQuality === "320" ? 320 : 192;
+        const wavBlob = audioBufferToMp3(processedBuffer, bitrate);
         const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
         wavBlobsRef.current.set(target.id, wavBlob);
         saveTrackToStorage(target, wavBlob)
@@ -1210,7 +1212,7 @@ export default function AudioConverter() {
                                 type="button"
                                 onClick={() => handleDownload(item.convertedUrl!, item.name)}
                                 className="p-2 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 transition-all"
-                                title="Download 8D Master (WAV)"
+                                title="Download 8D Master (MP3)"
                               >
                                 <Download className="w-3.5 h-3.5" />
                               </button>

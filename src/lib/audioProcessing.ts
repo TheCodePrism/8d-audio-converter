@@ -9,6 +9,7 @@ export const DEFAULT_OPTIONS: AudioProcessingOptions = {
   spatialRadius: 2.5,
   verticalOrbit: true, // 16D 3D vertical elevation wave
   centerAnchor: 0.18, // Anchors lead vocals & kick in center
+  exportQuality: "192", // MP3 - Compact (192 kbps)
 };
 
 export const PRESETS: Preset[] = [

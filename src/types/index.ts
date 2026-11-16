@@ -6,6 +6,7 @@ export interface AudioProcessingOptions {
   spatialRadius: number; // Virtual distance from listener (1 to 4)
   verticalOrbit?: boolean; // 16D Helical 3D elevation movement (over head / under chin)
   centerAnchor?: number; // 0.0 to 0.4 (Center vocal/kick anchor level to keep vocals solid)
+  exportQuality?: "192" | "320"; // "192" = Compact MP3 (192 kbps, ~5MB), "320" = High Fidelity MP3 (320 kbps, ~9MB)
 }
 
 export interface Preset {
