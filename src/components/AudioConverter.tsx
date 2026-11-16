@@ -483,7 +483,7 @@ export default function AudioConverter() {
               : f
           )
         );
-        setError(`Failed converting "${item.name}": ${msg}`);
+        // Suppress top-level global error banner; errors and retry controls are displayed directly within the queue track item.
       } finally {
         if (timeoutTimer) clearTimeout(timeoutTimer);
         if (audioContext && audioContext.state !== "closed") {
