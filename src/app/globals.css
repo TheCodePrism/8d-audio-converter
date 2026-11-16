@@ -12,6 +12,30 @@ body {
   background: var(--background);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
   overflow-x: hidden;
+  /* smooth iOS momentum scroll everywhere */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Safe-area padding for notched / punch-hole phones */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Touch-friendly range inputs — fatter thumb on mobile */
+@media (max-width: 640px) {
+  input[type="range"]::-webkit-slider-thumb {
+    width: 20px !important;
+    height: 20px !important;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 20px !important;
+    height: 20px !important;
+  }
+  /* Increase tap-target height for seek bar */
+  input[type="range"] {
+    height: 20px !important;
+    cursor: pointer;
+  }
 }
 
 /* Custom sleek scrollbar for playlist queue */
@@ -42,4 +66,12 @@ body {
 
 .no-scrollbar::-webkit-scrollbar {
   display: none; /* Chrome, Safari and Opera */
+}
+
+/* Active press feedback on touch devices */
+@media (hover: none) and (pointer: coarse) {
+  button:active {
+    transform: scale(0.94);
+    transition: transform 80ms ease;
+  }
 }

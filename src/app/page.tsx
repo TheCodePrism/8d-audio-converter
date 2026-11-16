@@ -17,22 +17,22 @@ export default function Home() {
       <Banner />
       <Header />
 
-      <main className="flex-grow p-4 md:p-8 max-w-7xl mx-auto w-full space-y-8">
-        {/* Top Studio Hero Header */}
-        <div className="text-center space-y-3 pt-2 md:pt-4">
+      <main className="flex-grow px-3 py-4 sm:px-4 sm:py-6 md:px-8 md:py-8 max-w-7xl mx-auto w-full space-y-6 sm:space-y-8">
+        {/* Top Studio Hero Header — compact on mobile */}
+        <div className="text-center space-y-2 sm:space-y-3 pt-1 sm:pt-2 md:pt-4">
           <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-mono font-medium tracking-wide">
             <Radio className="w-3.5 h-3.5 animate-pulse" />
             <span>360° BINAURAL HRTF SPATIALIZER</span>
           </div>
 
-          <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight">
+          <h1 className="text-2xl sm:text-3xl md:text-5xl font-extrabold tracking-tight">
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-500">
               8D Spatial Audio
             </span>{" "}
             Music Player
           </h1>
 
-          <p className="text-slate-400 text-xs md:text-sm max-w-2xl mx-auto leading-relaxed">
+          <p className="text-slate-400 text-xs sm:text-sm max-w-2xl mx-auto leading-relaxed hidden sm:block">
             Convert standard stereo tracks into an immersive 8D soundscape that orbits
             around your head in real-time. Load local tracks, paste YouTube songs, or try our instant demo audio.
           </p>

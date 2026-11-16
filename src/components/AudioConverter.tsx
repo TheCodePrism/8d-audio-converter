@@ -1175,19 +1175,19 @@ export default function AudioConverter() {
         </Alert>
       )}
 
-      {/* Mobile Top Navigation Segmented Switcher */}
-      <div className="lg:hidden flex items-center p-1 bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl">
+      {/* Mobile Top Navigation Segmented Switcher — sticky at top on mobile */}
+      <div className="lg:hidden sticky top-16 z-30 flex items-center p-1 bg-slate-900/95 border border-slate-800 rounded-2xl shadow-xl backdrop-blur-md">
         <button
           type="button"
           onClick={() => setMobileTab("player")}
-          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+          className={`flex-1 py-3 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all touch-manipulation ${
             mobileTab === "player"
               ? "bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
               : "text-slate-400 hover:text-slate-200"
           }`}
         >
           <Headphones className="w-4 h-4" />
-          <span>8D Player Deck</span>
+          <span>8D Player</span>
           {activeTrack?.status === "complete" && isPlaying && (
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
           )}
@@ -1196,31 +1196,31 @@ export default function AudioConverter() {
         <button
           type="button"
           onClick={() => setMobileTab("studio")}
-          className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+          className={`flex-1 py-3 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all touch-manipulation ${
             mobileTab === "studio"
               ? "bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
               : "text-slate-400 hover:text-slate-200"
           }`}
         >
           <ListMusic className="w-4 h-4" />
-          <span>Studio & Queue</span>
+          <span>Queue</span>
           {audioFiles.length > 0 && (
-            <span className="px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-mono">
+            <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-mono leading-none">
               {audioFiles.length}
             </span>
           )}
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
         {/* ========================================================= */}
         {/* LEFT COLUMN: THE 8D/16D SPATIAL MUSIC PLAYER (6 COLS)     */}
         {/* ========================================================= */}
-        <div className={`space-y-5 lg:col-span-6 ${mobileTab === "player" ? "block" : "hidden lg:block"}`}>
+        <div className={`space-y-4 sm:space-y-5 lg:col-span-6 ${mobileTab === "player" ? "block" : "hidden lg:block"}`}>
           {/* Deck Container */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-5 md:p-6 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl sm:rounded-3xl p-3 sm:p-5 md:p-6 shadow-2xl backdrop-blur-xl relative overflow-hidden">
             {/* Top Tag & Spatial Status */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-4">
+            <div className="flex items-center justify-between pb-2.5 sm:pb-3 border-b border-slate-800/80 mb-3 sm:mb-4">
               <div className="flex items-center gap-2">
                 <span className={`w-2.5 h-2.5 rounded-full ${isPlaying ? "bg-emerald-400 animate-ping" : "bg-cyan-400"}`} />
                 <span className="text-xs font-mono font-bold tracking-wider text-slate-300 uppercase">
@@ -1329,19 +1329,18 @@ export default function AudioConverter() {
             </div>
           )}
 
-          {/* Studio Tab Switcher */}
           <div className="flex items-center justify-between p-1.5 bg-slate-900/90 border border-slate-800 rounded-2xl">
             <button
               type="button"
               onClick={() => setActiveStudioTab("queue")}
-              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+              className={`flex-1 py-3 px-2 sm:px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
                 activeStudioTab === "queue"
                   ? "bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm"
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              <ListMusic className="w-4 h-4" />
-              <span>Playlist Queue</span>
+              <ListMusic className="w-4 h-4 shrink-0" />
+              <span className="truncate">Queue</span>
               {audioFiles.length > 0 && (
                 <span className="px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-mono">
                   {audioFiles.length}
@@ -1352,33 +1351,33 @@ export default function AudioConverter() {
             <button
               type="button"
               onClick={() => setActiveStudioTab("add")}
-              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+              className={`flex-1 py-3 px-2 sm:px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
                 activeStudioTab === "add"
                   ? "bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm"
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              <Plus className="w-4 h-4" />
-              <span>Add Music</span>
+              <Plus className="w-4 h-4 shrink-0" />
+              <span className="truncate">Add Music</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveStudioTab("settings")}
-              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+              className={`flex-1 py-3 px-2 sm:px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
                 activeStudioTab === "settings"
                   ? "bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm"
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              <Sliders className="w-4 h-4" />
-              <span>8D Tuning</span>
+              <Sliders className="w-4 h-4 shrink-0" />
+              <span className="truncate">8D Tuning</span>
             </button>
           </div>
 
           {/* TAB 1: PLAYLIST / QUEUE */}
           {activeStudioTab === "queue" && (
-            <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-xl backdrop-blur-xl space-y-4">
+            <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-3 sm:p-5 shadow-xl backdrop-blur-xl space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800">
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-semibold text-slate-100">
@@ -1468,7 +1467,7 @@ export default function AudioConverter() {
                   </button>
                 </div>
               ) : (
-                <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1 custom-scrollbar">
+                <div className="space-y-3 max-h-[50vh] sm:max-h-[460px] overflow-y-auto pr-1 custom-scrollbar">
                   {audioFiles.map((item, index) => {
                     const isCurrent = currentTrackIndex === index;
                     const ytLink = getYouTubeUrl(item);
@@ -1625,7 +1624,7 @@ export default function AudioConverter() {
                               <button
                                 type="button"
                                 onClick={() => handleDownload(item.convertedUrl!, item.name)}
-                                className="p-2 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 transition-all"
+                                className="hidden sm:flex p-2 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 transition-all"
                                 title="Download 8D Master (MP3)"
                               >
                                 <Download className="w-3.5 h-3.5" />
@@ -1636,7 +1635,7 @@ export default function AudioConverter() {
                               <button
                                 type="button"
                                 onClick={() => handleReconvert(index)}
-                                className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition-all"
+                                className="hidden sm:flex p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition-all"
                                 title="Re-convert with current 8D settings"
                               >
                                 <RefreshCw className="w-3.5 h-3.5" />
@@ -1695,7 +1694,7 @@ export default function AudioConverter() {
 
           {/* TAB 2: ADD MUSIC */}
           {activeStudioTab === "add" && (
-            <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-xl backdrop-blur-xl space-y-4">
+            <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-3 sm:p-5 shadow-xl backdrop-blur-xl space-y-4">
               {/* Hidden file input for .8dpack import */}
               <input
                 ref={packFileInputRef}

@@ -289,7 +289,7 @@ export default function OrbitVisualizer({
   }, [isPlaying, options, currentTime, analyserRef]);
 
   return (
-    <div className="relative w-full max-w-[320px] sm:max-w-[360px] md:max-w-[380px] aspect-square mx-auto flex items-center justify-center rounded-3xl overflow-hidden border border-slate-700/60 shadow-2xl bg-slate-950 group select-none transition-all duration-150">
+    <div className="relative w-full max-w-[300px] sm:max-w-[360px] md:max-w-[380px] aspect-square mx-auto flex items-center justify-center rounded-2xl sm:rounded-3xl overflow-hidden border border-slate-700/60 shadow-2xl bg-slate-950 group select-none transition-all duration-150">
       {/* ── Layer 1: Ambient Blurred Backlight Glow ── */}
       {coverImage ? (
         <div

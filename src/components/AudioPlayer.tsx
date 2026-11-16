@@ -416,11 +416,11 @@ export default function AudioPlayer({
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="flex flex-col space-y-4">
+    <div className="flex flex-col space-y-3 sm:space-y-4">
       <audio ref={audioRef} preload="metadata" />
 
       {/* ── 1. The Cover Image with Transparent 360°/16D Orbit Radar Overlay ── */}
-      <div className="w-full flex justify-center pt-1 pb-1">
+      <div className="w-full flex justify-center">
         <OrbitVisualizer
           isPlaying={isPlaying}
           options={options}
@@ -434,30 +434,30 @@ export default function AudioPlayer({
       </div>
 
       {/* ── 2. Now Playing Track Metadata & Spatial Badges ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-1 pt-1">
+      <div className="flex items-start justify-between gap-2 px-1 pt-0.5">
         <div className="min-w-0 flex-1">
-          <h3 className="font-bold text-white text-base sm:text-lg md:text-xl truncate leading-tight tracking-tight">
+          <h3 className="font-bold text-white text-sm sm:text-base md:text-xl truncate leading-tight tracking-tight">
             {title}
           </h3>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-xs sm:text-sm text-slate-400 truncate max-w-[200px] sm:max-w-xs font-medium">
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-xs text-slate-400 truncate max-w-[180px] sm:max-w-xs font-medium">
               {artist}
             </span>
             {is8DReady && (
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 uppercase font-semibold">
-                8D Spatial
+              <span className="text-[9px] sm:text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 uppercase font-semibold shrink-0">
+                8D
               </span>
             )}
           </div>
         </div>
 
         {/* Action Pills: Copy YouTube Link & A/B Bypass */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {sourceUrl && (
             <button
               type="button"
               onClick={() => handleCopyLink(sourceUrl)}
-              className={`px-2.5 py-1.5 rounded-xl text-[11px] font-semibold transition-all flex items-center gap-1.5 border shrink-0 ${
+              className={`p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-[11px] font-semibold transition-all flex items-center gap-1.5 border shrink-0 ${
                 copiedLink
                   ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-300"
                   : "bg-slate-900 border-slate-700 hover:border-red-500/50 text-slate-300 hover:text-red-400"
@@ -465,10 +465,7 @@ export default function AudioPlayer({
               title={copiedLink ? "Copied to clipboard!" : "Copy YouTube link"}
             >
               {copiedLink ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="font-mono">Copied!</span>
-                </>
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
               ) : (
                 <>
                   <Youtube className="w-3.5 h-3.5 text-red-500 fill-current" />
@@ -486,7 +483,7 @@ export default function AudioPlayer({
               onClick={() =>
                 setPlaybackMode((prev) => (prev === "8d" ? "original" : "8d"))
               }
-              className={`px-3 py-1.5 rounded-xl text-[11px] font-mono font-semibold transition-all flex items-center gap-1.5 border shrink-0 shadow-sm ${
+              className={`p-2 sm:px-3 sm:py-1.5 rounded-xl text-[11px] font-mono font-semibold transition-all flex items-center gap-1.5 border shrink-0 shadow-sm ${
                 playbackMode === "8d"
                   ? "bg-cyan-500/20 border-cyan-400/80 text-cyan-200 shadow-cyan-500/15"
                   : "bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200"
@@ -494,7 +491,7 @@ export default function AudioPlayer({
               title="Toggle between 8D Spatial Audio and Original Stereo Audio"
             >
               <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-              <span>{playbackMode === "8d" ? "8D SPATIAL" : "BYPASS STEREO"}</span>
+              <span className="hidden sm:inline">{playbackMode === "8d" ? "8D SPATIAL" : "BYPASS STEREO"}</span>
             </button>
           )}
 
@@ -502,7 +499,7 @@ export default function AudioPlayer({
             <button
               type="button"
               onClick={onDownload}
-              className="p-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 transition-all shrink-0"
+              className="p-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 transition-all shrink-0"
               title="Download 8D MP3 Master"
             >
               <Download className="w-4 h-4" />
@@ -511,9 +508,9 @@ export default function AudioPlayer({
         </div>
       </div>
 
-      {/* ── 3. High-Precision Scrub Timeline ── */}
-      <div className="space-y-1.5 pt-1">
-        <div className="relative group w-full flex items-center">
+      {/* ── 3. High-Precision Scrub Timeline (tall tap target on mobile) ── */}
+      <div className="space-y-1 px-0.5">
+        <div className="relative w-full flex items-center">
           <input
             type="range"
             min="0"
@@ -522,26 +519,26 @@ export default function AudioPlayer({
             value={currentTime}
             onChange={handleSeek}
             disabled={!src}
-            className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer focus:outline-none disabled:opacity-40 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(56,189,248,0.8)] [&::-webkit-slider-thumb]:hover:scale-125 [&::-webkit-slider-thumb]:transition-transform"
+            className="w-full h-2 sm:h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer focus:outline-none disabled:opacity-40 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:sm:w-3.5 [&::-webkit-slider-thumb]:sm:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(56,189,248,0.8)] [&::-webkit-slider-thumb]:transition-transform touch-none"
             style={{
               background: `linear-gradient(to right, #38bdf8 ${progressPercent}%, #a855f7 ${progressPercent}%, #1e293b ${progressPercent}%)`,
             }}
           />
         </div>
-        <div className="flex justify-between text-[11px] font-mono text-slate-400 px-0.5">
+        <div className="flex justify-between text-[11px] font-mono text-slate-400">
           <span>{formatTime(currentTime)}</span>
           <span>{formatTime(duration)}</span>
         </div>
       </div>
 
       {/* ── 4. Audiophile Transport Deck ── */}
-      <div className="flex items-center justify-between gap-2 pt-1 pb-1">
-        {/* Left Side: Shuffle & Repeat */}
-        <div className="flex items-center gap-1 sm:gap-1.5">
+      <div className="flex items-center justify-between gap-1 sm:gap-2 py-0.5">
+        {/* Left: Shuffle & Repeat */}
+        <div className="flex items-center gap-0.5 sm:gap-1.5">
           <button
             type="button"
             onClick={toggleShuffle}
-            className={`p-2 rounded-xl transition-all ${
+            className={`p-2.5 sm:p-2 rounded-xl transition-all touch-manipulation ${
               isShuffle
                 ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
                 : "text-slate-500 hover:text-slate-300"
@@ -553,7 +550,7 @@ export default function AudioPlayer({
           <button
             type="button"
             onClick={toggleLoop}
-            className={`p-2 rounded-xl transition-all ${
+            className={`p-2.5 sm:p-2 rounded-xl transition-all touch-manipulation ${
               isLooping
                 ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
                 : "text-slate-500 hover:text-slate-300"
@@ -564,13 +561,13 @@ export default function AudioPlayer({
           </button>
         </div>
 
-        {/* Center: Skip -10s, Previous, HERO Play/Pause, Next, Skip +10s */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        {/* Center: Skip, Prev, Play, Next, Skip */}
+        <div className="flex items-center gap-1 sm:gap-2">
           <button
             type="button"
             onClick={() => skipTime(-10)}
             disabled={!src}
-            className="p-2 text-slate-400 hover:text-slate-200 disabled:opacity-40 transition-colors"
+            className="p-2.5 sm:p-2 text-slate-400 hover:text-slate-200 disabled:opacity-40 transition-colors touch-manipulation"
             title="Rewind 10 seconds"
           >
             <RotateCcw className="w-4 h-4" />
@@ -583,18 +580,18 @@ export default function AudioPlayer({
               onPrev?.(true);
             }}
             disabled={!onPrev}
-            className="p-2 text-slate-400 hover:text-slate-200 disabled:opacity-40 transition-colors"
+            className="p-2.5 sm:p-2 text-slate-400 hover:text-slate-200 disabled:opacity-40 transition-colors touch-manipulation"
             title="Previous track"
           >
             <SkipBack className="w-5 h-5 fill-current" />
           </button>
 
-          {/* 🌟 HERO PLAY / PAUSE BUTTON WITH NEON PULSE 🌟 */}
+          {/* 🌟 HERO PLAY / PAUSE */}
           <button
             type="button"
             onClick={togglePlay}
             disabled={!src}
-            className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+            className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation ${
               isPlaying
                 ? "bg-gradient-to-tr from-cyan-400 via-cyan-500 to-purple-600 text-slate-950 font-black shadow-xl shadow-cyan-500/30 ring-4 ring-cyan-400/20 scale-105"
                 : "bg-gradient-to-tr from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white font-black shadow-lg shadow-cyan-500/20 hover:scale-105"
@@ -615,7 +612,7 @@ export default function AudioPlayer({
               onNext?.(true);
             }}
             disabled={!onNext}
-            className="p-2 text-slate-400 hover:text-slate-200 disabled:opacity-40 transition-colors"
+            className="p-2.5 sm:p-2 text-slate-400 hover:text-slate-200 disabled:opacity-40 transition-colors touch-manipulation"
             title="Next track"
           >
             <SkipForward className="w-5 h-5 fill-current" />
@@ -625,19 +622,19 @@ export default function AudioPlayer({
             type="button"
             onClick={() => skipTime(10)}
             disabled={!src}
-            className="p-2 text-slate-400 hover:text-slate-200 disabled:opacity-40 transition-colors"
+            className="p-2.5 sm:p-2 text-slate-400 hover:text-slate-200 disabled:opacity-40 transition-colors touch-manipulation"
             title="Fast forward 10 seconds"
           >
             <RotateCw className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Right Side: Volume & Mute */}
-        <div className="flex items-center gap-1.5 w-24 sm:w-32 justify-end">
+        {/* Right: Volume (mute-only on xs, slider on sm+) */}
+        <div className="flex items-center gap-1 justify-end">
           <button
             type="button"
             onClick={toggleMute}
-            className="p-1.5 text-slate-400 hover:text-slate-200 transition-colors"
+            className="p-2.5 sm:p-1.5 text-slate-400 hover:text-slate-200 transition-colors touch-manipulation"
             title={isMuted ? "Unmute" : "Mute"}
           >
             {isMuted || volume === 0 ? (
@@ -653,7 +650,7 @@ export default function AudioPlayer({
             step="0.01"
             value={isMuted ? 0 : volume}
             onChange={handleVolumeChange}
-            className="w-16 sm:w-20 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer focus:outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400"
+            className="hidden sm:block w-16 sm:w-20 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer focus:outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400"
             style={{
               background: `linear-gradient(to right, #38bdf8 ${
                 (isMuted ? 0 : volume) * 100
@@ -665,14 +662,14 @@ export default function AudioPlayer({
 
       {/* ── 5. Instant 8D Spatial Presets Bar ── */}
       {onSelectPreset && (
-        <div className="pt-3 border-t border-slate-800/80">
+        <div className="pt-2 sm:pt-3 border-t border-slate-800/80">
           <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-2">
             <span>Spatial Audio Presets</span>
-            <span className="text-cyan-400/80 font-sans normal-case text-[10px]">
+            <span className="text-cyan-400/80 font-sans normal-case text-[10px] hidden sm:block">
               Tap to live-switch acoustics
             </span>
           </div>
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:flex-wrap no-scrollbar">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
             {PRESETS.map((p) => {
               const isCurrent =
                 options.rotationSpeed === p.options.rotationSpeed &&
@@ -682,7 +679,7 @@ export default function AudioPlayer({
                   key={p.id}
                   type="button"
                   onClick={() => onSelectPreset(p.options)}
-                  className={`text-xs px-3 py-1.5 rounded-xl border whitespace-nowrap transition-all font-medium ${
+                  className={`text-xs px-3 py-2 sm:py-1.5 rounded-xl border whitespace-nowrap transition-all font-medium touch-manipulation ${
                     isCurrent
                       ? "bg-cyan-500/20 border-cyan-400 text-cyan-200 ring-1 ring-cyan-500/30 shadow-sm"
                       : "bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
