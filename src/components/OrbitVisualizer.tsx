@@ -33,8 +33,9 @@ export default function OrbitVisualizer({
   const angleTextRef = useRef<HTMLSpanElement | null>(null);
   const earPanRef = useRef<HTMLSpanElement | null>(null);
 
-  // Smooth lerp accumulator for cover image bass reaction
-  const smoothedBassRef = useRef<number>(0);
+  // Transient beat detector refs for musical punch & kick drum accuracy
+  const bassBaselineRef = useRef<number>(0.2);
+  const currentScaleRef = useRef<number>(1.0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -60,9 +61,7 @@ export default function OrbitVisualizer({
       const centerY = size / 2;
       const radius = (size / 2) * 0.72;
 
-      // ── Sample Live Audio Bass for Album Image Reactivity ONLY ──
-      let rawBass = 0;
-
+      // ── Sample Live Audio Transients for High-Precision Kick/Beat Detection ──
       if (analyserRef?.current && isPlaying) {
         try {
           const analyser = analyserRef.current;
@@ -70,30 +69,62 @@ export default function OrbitVisualizer({
           const dataArray = new Uint8Array(bufferLength);
           analyser.getByteFrequencyData(dataArray);
 
-          // Sub-bass & Bass: first 4 bins (~40Hz - 220Hz)
-          let bassSum = 0;
-          const bassBins = Math.min(4, bufferLength);
-          for (let i = 0; i < bassBins; i++) {
-            bassSum += dataArray[i];
+          // With fftSize=512 at 44.1kHz, each bin is ~86Hz wide
+          // Bin 0: ~0-86 Hz (sub-bass / kick fundamental)
+          // Bin 1: ~86-172 Hz (kick drum punch)
+          // Bin 2: ~172-258 Hz (bass guitar body)
+          // Bin 3: ~258-344 Hz (low mid)
+          const b0 = (dataArray[0] || 0) / 255;
+          const b1 = (dataArray[1] || 0) / 255;
+          const b2 = (dataArray[2] || 0) / 255;
+          const b3 = (dataArray[3] || 0) / 255;
+          const kickEnergy = b0 * 0.35 + b1 * 0.45 + b2 * 0.15 + b3 * 0.05;
+
+          // Snappy mid-range percussion (snare / clap / acoustic hits: bins 5 to 14, ~430Hz to ~1.2kHz)
+          let midSum = 0;
+          const midCount = Math.min(10, Math.max(1, bufferLength - 5));
+          for (let i = 5; i < 5 + midCount; i++) {
+            midSum += dataArray[i];
           }
-          rawBass = Math.min(1, bassSum / (bassBins * 190));
+          const midEnergy = midSum / (midCount * 255);
+
+          // Combined rhythmic impulse
+          const instantEnergy = kickEnergy * 0.8 + midEnergy * 0.2;
+
+          // Rolling adaptive baseline (adjusts to track loudness over ~500ms)
+          bassBaselineRef.current += (instantEnergy - bassBaselineRef.current) * 0.05;
+          const baseline = Math.max(0.06, bassBaselineRef.current);
+
+          // Transient detection: detect sharp energy spikes above baseline
+          const delta = Math.max(0, instantEnergy - baseline * 1.12);
+          const normalizedHit = Math.min(1, delta / Math.max(0.12, 1 - baseline));
+
+          // Target scale: 1.0 (rest) to 1.085 (peak kick punch)
+          const targetScale = 1.0 + Math.pow(normalizedHit, 1.4) * 0.085;
+
+          // Asymmetric Attack / Decay Physics:
+          // Instant attack: on a beat hit, snap immediately!
+          if (targetScale > currentScaleRef.current) {
+            currentScaleRef.current = targetScale;
+          } else {
+            // Smooth exponential spring release back to 1.0 (~120ms)
+            currentScaleRef.current += (1.0 - currentScaleRef.current) * 0.18;
+          }
         } catch {
-          // fallback if context not ready
+          // fallback
+          currentScaleRef.current += (1.0 - currentScaleRef.current) * 0.18;
         }
       } else if (isPlaying) {
-        // Subtle rhythm fallback if analyser is initializing
-        const pulse = (Math.sin(now * 0.007) + 1) * 0.5;
-        rawBass = pulse * 0.2;
+        // Smooth idle decay if analyser is warming up
+        currentScaleRef.current += (1.0 - currentScaleRef.current) * 0.18;
+      } else {
+        currentScaleRef.current += (1.0 - currentScaleRef.current) * 0.25;
       }
 
-      // Smooth easing (decay & lerp) to prevent jittery transitions
-      smoothedBassRef.current += (rawBass - smoothedBassRef.current) * 0.35;
-      const bass = smoothedBassRef.current;
-
-      // ── ONLY Animate Cover Image (Pumps dynamically to the beat) ──
+      // ── Animate Cover Image Scale to the Beat ──
       if (coverImgRef.current) {
-        const imgScale = isPlaying ? 1.0 + bass * 0.065 : 1.0;
-        coverImgRef.current.style.transform = `scale(${imgScale})`;
+        const s = currentScaleRef.current.toFixed(4);
+        coverImgRef.current.style.transform = `scale(${s})`;
       }
 
       // ── Update Rotation Angle ──

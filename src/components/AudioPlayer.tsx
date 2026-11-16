@@ -105,8 +105,8 @@ export default function AudioPlayer({
       if (!AudioCtx) return;
       const ctx = new AudioCtx();
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 128;
-      analyser.smoothingTimeConstant = 0.7;
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.2;
       const source = ctx.createMediaElementSource(audio);
       source.connect(analyser);
       analyser.connect(ctx.destination);
@@ -417,7 +417,7 @@ export default function AudioPlayer({
 
   return (
     <div className="flex flex-col space-y-4">
-      <audio ref={audioRef} preload="metadata" crossOrigin="anonymous" />
+      <audio ref={audioRef} preload="metadata" />
 
       {/* ── 1. The Cover Image with Transparent 360°/16D Orbit Radar Overlay ── */}
       <div className="w-full flex justify-center pt-1 pb-1">
