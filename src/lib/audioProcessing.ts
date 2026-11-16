@@ -494,7 +494,11 @@ export function generateDemoAudioBuffer(sampleRate = 44100, duration = 16): Audi
  * @param kbps         Target bitrate (default 192 kbps — transparent quality)
  * @returns            A Blob of type "audio/mpeg"
  */
-export function audioBufferToMp3(audioBuffer: AudioBuffer, kbps = 192): Blob {
+export async function audioBufferToMp3(
+  audioBuffer: AudioBuffer,
+  kbps = 192,
+  onProgress?: (progressPercent: number) => void
+): Promise<Blob> {
   const numChannels = audioBuffer.numberOfChannels;
   const sampleRate = audioBuffer.sampleRate;
   const length = audioBuffer.length;
@@ -529,6 +533,16 @@ export function audioBufferToMp3(audioBuffer: AudioBuffer, kbps = 192): Blob {
     const rightChunk = rightInt16.subarray(offset, offset + BLOCK);
     const encoded = encoder.encodeBuffer(leftChunk, rightChunk);
     if (encoded.length > 0) mp3Parts.push(encoded);
+
+    // Non-blocking chunk yield: allows UI visualizers to maintain 60 FPS
+    // and updates real-time encoding progress on mobile devices
+    if (offset % (BLOCK * 35) === 0) {
+      if (onProgress) {
+        const percent = Math.min(99, 85 + Math.floor((offset / length) * 14));
+        onProgress(percent);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
   }
 
   const flushed = encoder.flush();

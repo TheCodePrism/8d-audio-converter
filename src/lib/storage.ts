@@ -106,6 +106,34 @@ export async function clearAllSavedTracks(): Promise<void> {
   });
 }
 
+export interface StorageQuotaInfo {
+  usageMB: number;
+  quotaMB: number;
+  percentage: number;
+}
+
+export async function getStorageQuota(): Promise<StorageQuotaInfo | null> {
+  if (
+    typeof navigator === "undefined" ||
+    !navigator.storage ||
+    !navigator.storage.estimate
+  ) {
+    return null;
+  }
+  try {
+    const estimate = await navigator.storage.estimate();
+    const usage = estimate.usage || 0;
+    const quota = estimate.quota || 0;
+    const usageMB = Math.round((usage / (1024 * 1024)) * 10) / 10;
+    const quotaMB = Math.round((quota / (1024 * 1024)) * 10) / 10;
+    const percentage =
+      quota > 0 ? Math.min(100, Math.round((usage / quota) * 1000) / 10) : 0;
+    return { usageMB, quotaMB, percentage };
+  } catch {
+    return null;
+  }
+}
+
 // ── .8dpack Container Export & Import ─────────────────────────────────────────
 // Container format:
 // [8 bytes ASCII]: "8DPACK01"

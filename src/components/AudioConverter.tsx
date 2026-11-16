@@ -29,6 +29,7 @@ import {
   HardDrive,
   Archive,
   Save,
+  Zap,
 } from "lucide-react";
 import AudioPlayer from "./AudioPlayer";
 import UploadForm from "./UploadForm";
@@ -56,6 +57,8 @@ import {
   saveQueueManifest,
   getQueueManifest,
   clearQueueManifest,
+  getStorageQuota,
+  StorageQuotaInfo,
 } from "@/lib/storage";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
@@ -85,14 +88,17 @@ export default function AudioConverter() {
 
   // Export / Import & Offline Persistence State
   const [savedLibrary, setSavedLibrary] = useState<SavedTrackRecord[]>([]);
+  const [storageQuota, setStorageQuota] = useState<StorageQuotaInfo | null>(null);
   const [isExportingPack, setIsExportingPack] = useState<boolean>(false);
   const [isImportingPack, setIsImportingPack] = useState<boolean>(false);
+  const [isWakeLocked, setIsWakeLocked] = useState<boolean>(false);
 
   const createdUrlsRef = useRef<string[]>([]);
   const wavBlobsRef = useRef<Map<string, Blob>>(new Map());
   const isProcessingQueueRef = useRef<boolean>(false);
   const packFileInputRef = useRef<HTMLInputElement>(null);
   const isHydratedRef = useRef<boolean>(false);
+  const wakeLockRef = useRef<any>(null);
 
   const registerUrl = useCallback((url: string) => {
     createdUrlsRef.current.push(url);
@@ -103,6 +109,8 @@ export default function AudioConverter() {
     try {
       const tracks = await getSavedTracks();
       setSavedLibrary(tracks);
+      const quota = await getStorageQuota();
+      setStorageQuota(quota);
       return tracks;
     } catch (err) {
       console.warn("Could not retrieve saved library:", err);
@@ -220,6 +228,41 @@ export default function AudioConverter() {
   useEffect(() => {
     if (!isHydratedRef.current) return;
     saveQueueManifest(audioFiles);
+  }, [audioFiles]);
+
+  // Mobile Screen WakeLock: prevents mobile screens from turning off during batch conversion
+  useEffect(() => {
+    const isConverting = audioFiles.some((f) => f.status === "converting");
+
+    async function handleWakeLock() {
+      if (typeof navigator !== "undefined" && "wakeLock" in navigator) {
+        if (isConverting) {
+          try {
+            if (!wakeLockRef.current) {
+              wakeLockRef.current = await (navigator as any).wakeLock.request("screen");
+              setIsWakeLocked(true);
+            }
+          } catch (err) {
+            console.warn("Screen wake lock request failed:", err);
+          }
+        } else if (wakeLockRef.current) {
+          try {
+            await wakeLockRef.current.release();
+          } catch {}
+          wakeLockRef.current = null;
+          setIsWakeLocked(false);
+        }
+      }
+    }
+
+    handleWakeLock();
+
+    return () => {
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
+      }
+    };
   }, [audioFiles]);
 
   useEffect(() => {
@@ -352,7 +395,9 @@ export default function AudioConverter() {
         updateItemProgress(item.id, 85);
         const processedBuffer = await process8DAudio(decodedBuffer, options);
         const bitrate = options.exportQuality === "320" ? 320 : 192;
-        const wavBlob = audioBufferToMp3(processedBuffer, bitrate);
+        const wavBlob = await audioBufferToMp3(processedBuffer, bitrate, (pct) =>
+          updateItemProgress(item.id, pct)
+        );
         const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
         wavBlobsRef.current.set(item.id, wavBlob);
 
@@ -612,7 +657,7 @@ export default function AudioConverter() {
       try {
         const processedBuffer = await process8DAudio(target.rawBuffer, opts);
         const bitrate = opts.exportQuality === "320" ? 320 : 192;
-        const wavBlob = audioBufferToMp3(processedBuffer, bitrate);
+        const wavBlob = await audioBufferToMp3(processedBuffer, bitrate);
         const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
         wavBlobsRef.current.set(target.id, wavBlob);
         saveTrackToStorage(target, wavBlob)
@@ -1150,6 +1195,12 @@ export default function AudioConverter() {
                       {pendingTracks.length} Queued
                     </span>
                   )}
+                  {isWakeLocked && (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                      <Zap className="w-2.5 h-2.5 fill-current text-amber-400" />
+                      Screen Awake
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1505,6 +1556,33 @@ export default function AudioConverter() {
                       )}
                     </div>
                   </div>
+
+                  {/* Storage Quota Usage Meter */}
+                  {storageQuota && (
+                    <div className="p-2.5 rounded-xl bg-slate-950/40 border border-slate-800/80 space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-400 flex items-center gap-1 font-mono">
+                          <HardDrive className="w-3 h-3 text-purple-400" />
+                          Storage Quota
+                        </span>
+                        <span className="font-mono text-purple-300 font-semibold text-[10px]">
+                          {storageQuota.usageMB} MB /{" "}
+                          {storageQuota.quotaMB > 1024
+                            ? `${(storageQuota.quotaMB / 1024).toFixed(1)} GB`
+                            : `${storageQuota.quotaMB} MB`}{" "}
+                          ({storageQuota.percentage}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="bg-gradient-to-r from-purple-500 to-cyan-400 h-1.5 rounded-full transition-all duration-300"
+                          style={{
+                            width: `${Math.min(100, Math.max(1, storageQuota.percentage))}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   {/* Library Track List */}
                   {savedLibrary.length === 0 ? (

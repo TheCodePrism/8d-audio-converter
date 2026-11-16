@@ -188,6 +188,82 @@ export default function AudioPlayer({
     };
   }, [onTimeUpdate, onPlayStateChange, isLooping, onNext]);
 
+  // MediaSession API: Mobile Lock Screen & Smartwatch / Bluetooth Controls
+  useEffect(() => {
+    if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
+
+    try {
+      const artwork = thumbnail
+        ? [
+            { src: thumbnail, sizes: "96x96", type: "image/jpeg" },
+            { src: thumbnail, sizes: "128x128", type: "image/jpeg" },
+            { src: thumbnail, sizes: "192x192", type: "image/jpeg" },
+            { src: thumbnail, sizes: "512x512", type: "image/jpeg" },
+          ]
+        : [];
+
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title,
+        artist: artist || "8D Audio Converter",
+        album: "8D Spatial Studio",
+        artwork,
+      });
+
+      navigator.mediaSession.setActionHandler("play", () => {
+        audioRef.current?.play().catch(() => {});
+      });
+
+      navigator.mediaSession.setActionHandler("pause", () => {
+        audioRef.current?.pause();
+      });
+
+      if (onPrev) {
+        navigator.mediaSession.setActionHandler("previoustrack", () => {
+          onPrev(true);
+        });
+      } else {
+        navigator.mediaSession.setActionHandler("previoustrack", null);
+      }
+
+      if (onNext) {
+        navigator.mediaSession.setActionHandler("nexttrack", () => {
+          onNext(true);
+        });
+      } else {
+        navigator.mediaSession.setActionHandler("nexttrack", null);
+      }
+
+      navigator.mediaSession.setActionHandler("seekto", (details) => {
+        if (details.seekTime !== undefined && audioRef.current) {
+          audioRef.current.currentTime = details.seekTime;
+          setCurrentTime(details.seekTime);
+        }
+      });
+    } catch (err) {
+      console.warn("MediaSession registration error:", err);
+    }
+  }, [title, artist, thumbnail, onNext, onPrev]);
+
+  // Update lock screen timeline position
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      !("mediaSession" in navigator) ||
+      !navigator.mediaSession.setPositionState
+    )
+      return;
+
+    try {
+      if (duration > 0) {
+        navigator.mediaSession.setPositionState({
+          duration: Math.max(0, duration),
+          playbackRate: 1,
+          position: Math.min(Math.max(0, currentTime), duration),
+        });
+      }
+    } catch {}
+  }, [currentTime, duration]);
+
   const togglePlay = async () => {
     const audio = audioRef.current;
     if (!audio) return;
