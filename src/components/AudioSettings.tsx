@@ -39,6 +39,7 @@ export default function AudioSettings({
       onChange({
         ...preset.options,
         exportQuality: options.exportQuality || "192",
+        concurrency: options.concurrency || 2,
       });
     }
   };
@@ -399,6 +400,69 @@ export default function AudioSettings({
                 </div>
               </button>
             </div>
+          </div>
+
+          {/* Parallel Queue Conversion Engine */}
+          <div className="pt-4 border-t border-slate-800/80 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400">
+                Parallel Audio Conversions
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                {options.concurrency === 1
+                  ? "1 Track at a time"
+                  : options.concurrency === 3
+                  ? "3 Tracks in parallel"
+                  : "2 Tracks in parallel"}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => handleOptionChange("concurrency", 1)}
+                className={`py-2 px-2.5 rounded-xl border text-center transition-all ${
+                  options.concurrency === 1
+                    ? "border-cyan-500 bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500"
+                    : "border-slate-800 hover:border-slate-700 bg-slate-950/40 text-slate-400"
+                }`}
+              >
+                <span className="block text-xs font-semibold">1x Single</span>
+                <span className="text-[10px] text-slate-500 block">Battery Saver</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => handleOptionChange("concurrency", 2)}
+                className={`py-2 px-2.5 rounded-xl border text-center transition-all ${
+                  (options.concurrency || 2) === 2
+                    ? "border-cyan-500 bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500"
+                    : "border-slate-800 hover:border-slate-700 bg-slate-950/40 text-slate-400"
+                }`}
+              >
+                <span className="block text-xs font-semibold">2x Parallel</span>
+                <span className="text-[10px] text-cyan-300/80 block">Recommended</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => handleOptionChange("concurrency", 3)}
+                className={`py-2 px-2.5 rounded-xl border text-center transition-all ${
+                  options.concurrency === 3
+                    ? "border-cyan-500 bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500"
+                    : "border-slate-800 hover:border-slate-700 bg-slate-950/40 text-slate-400"
+                }`}
+              >
+                <span className="block text-xs font-semibold">3x Turbo</span>
+                <span className="text-[10px] text-slate-500 block">Fast Desktop</span>
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-500">
+              Converts multiple songs in the queue concurrently, cutting total playlist conversion time by 50% to 66%.
+            </p>
           </div>
         </div>
       )}

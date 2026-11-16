@@ -95,7 +95,7 @@ export default function AudioConverter() {
 
   const createdUrlsRef = useRef<string[]>([]);
   const wavBlobsRef = useRef<Map<string, Blob>>(new Map());
-  const isProcessingQueueRef = useRef<boolean>(false);
+  const activeConvertingIdsRef = useRef<Set<string>>(new Set());
   const packFileInputRef = useRef<HTMLInputElement>(null);
   const isHydratedRef = useRef<boolean>(false);
   const wakeLockRef = useRef<any>(null);
@@ -498,21 +498,25 @@ export default function AudioConverter() {
 
   const MAX_AUTO_RETRIES = 2;
 
-  // Background Queue Runner: automatically detects next pending track,
-  // interleaves retries of failed tracks right after a successful one,
-  // and finishes any remaining failed tracks after the list completes.
+  // Background Parallel Queue Runner:
+  // Dynamically launches up to options.concurrency (default 2) conversions in parallel.
+  // Interleaves retries of failed tracks right after a successful one.
   useEffect(() => {
-    if (isProcessingQueueRef.current) return;
+    const maxConcurrency = options.concurrency || 2;
+    const convertingTracks = audioFiles.filter((f) => f.status === "converting");
+    const activeCount = convertingTracks.length;
+    const availableSlots = maxConcurrency - activeCount;
 
-    const isAnyConverting = audioFiles.some((f) => f.status === "converting");
-    if (isAnyConverting) return;
+    if (availableSlots <= 0) return;
 
-    // 1. If a track just succeeded, check if there is a failed track in the retry queue
-    // that should be retried now (interleaved retry right after success!)
+    // 1. If a track just succeeded, check if there is a failed track to retry first
     if (hasNewSuccessRef.current) {
       hasNewSuccessRef.current = false;
       const retryCandidate = audioFiles.find(
-        (f) => f.status === "error" && (f.retryCount || 0) < MAX_AUTO_RETRIES
+        (f) =>
+          f.status === "error" &&
+          (f.retryCount || 0) < MAX_AUTO_RETRIES &&
+          !activeConvertingIdsRef.current.has(f.id)
       );
       if (retryCandidate) {
         const nextAttempt = (retryCandidate.retryCount || 0) + 1;
@@ -538,49 +542,60 @@ export default function AudioConverter() {
       }
     }
 
-    // 2. Process standard pending tracks
-    const nextPending = audioFiles.find((f) => f.status === "pending");
-    if (nextPending) {
-      isProcessingQueueRef.current = true;
-      processQueueItem(nextPending).finally(() => {
-        isProcessingQueueRef.current = false;
-      });
+    // 2. Launch up to availableSlots pending tracks in parallel
+    const pendingTracks = audioFiles.filter(
+      (f) => f.status === "pending" && !activeConvertingIdsRef.current.has(f.id)
+    );
+
+    if (pendingTracks.length > 0) {
+      const batchToStart = pendingTracks.slice(0, availableSlots);
+      for (const track of batchToStart) {
+        activeConvertingIdsRef.current.add(track.id);
+        processQueueItem(track).finally(() => {
+          activeConvertingIdsRef.current.delete(track.id);
+        });
+      }
       return;
     }
 
     // 3. All standard pending tracks in the list are finished!
-    // Check if any failed track should be automatically retried after the rest of the list
-    const failedTrackToRetry = audioFiles.find(
-      (f) => f.status === "error" && (f.retryCount || 0) < MAX_AUTO_RETRIES
-    );
-
-    if (failedTrackToRetry) {
-      const nextAttempt = (failedTrackToRetry.retryCount || 0) + 1;
-      console.log(
-        `[Auto-Retry] All other queue items processed. Automatically retrying "${failedTrackToRetry.name}" (attempt ${nextAttempt}/${MAX_AUTO_RETRIES})...`
+    // If no active conversions remain, check if any failed track still has retries left
+    if (activeCount === 0) {
+      const failedTrackToRetry = audioFiles.find(
+        (f) =>
+          f.status === "error" &&
+          (f.retryCount || 0) < MAX_AUTO_RETRIES &&
+          !activeConvertingIdsRef.current.has(f.id)
       );
 
-      const timer = setTimeout(() => {
-        setAudioFiles((prev) =>
-          prev.map((f) =>
-            f.id === failedTrackToRetry.id
-              ? {
-                  ...f,
-                  status: "pending",
-                  progress: 0,
-                  stage: "Auto-retrying...",
-                  retryCount: nextAttempt,
-                  error: undefined,
-                  errorDetails: undefined,
-                }
-              : f
-          )
+      if (failedTrackToRetry) {
+        const nextAttempt = (failedTrackToRetry.retryCount || 0) + 1;
+        console.log(
+          `[Auto-Retry] All queue items processed. Automatically retrying "${failedTrackToRetry.name}" (attempt ${nextAttempt}/${MAX_AUTO_RETRIES})...`
         );
-      }, 1500);
 
-      return () => clearTimeout(timer);
+        const timer = setTimeout(() => {
+          setAudioFiles((prev) =>
+            prev.map((f) =>
+              f.id === failedTrackToRetry.id
+                ? {
+                    ...f,
+                    status: "pending",
+                    progress: 0,
+                    stage: "Auto-retrying...",
+                    retryCount: nextAttempt,
+                    error: undefined,
+                    errorDetails: undefined,
+                  }
+                : f
+            )
+          );
+        }, 1500);
+
+        return () => clearTimeout(timer);
+      }
     }
-  }, [audioFiles, processQueueItem]);
+  }, [audioFiles, options.concurrency, processQueueItem]);
 
   // --- 1. Local File Upload Handler ---
   const handleFileUpload = (files: File[]) => {
