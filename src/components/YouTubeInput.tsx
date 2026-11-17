@@ -22,12 +22,14 @@ interface YouTubeInputProps {
   onConvertTrack: (track: YouTubeTrack) => Promise<void>;
   onConvertBatch: (tracks: YouTubeTrack[]) => Promise<void>;
   isConverting: boolean;
+  onStateChange?: (state: { isFetching: boolean; fetchedCount: number; title?: string }) => void;
 }
 
 export default function YouTubeInput({
   onConvertTrack,
   onConvertBatch,
   isConverting,
+  onStateChange,
 }: YouTubeInputProps) {
   const [url, setUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -37,6 +39,15 @@ export default function YouTubeInput({
     new Set()
   );
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+
+  // Sync state change with parent so tabs can display live fetching/ready indicators
+  React.useEffect(() => {
+    onStateChange?.({
+      isFetching: isLoading,
+      fetchedCount: info?.tracks?.length || 0,
+      title: info?.title,
+    });
+  }, [isLoading, info, onStateChange]);
 
   const formatDuration = (seconds?: number) => {
     if (!seconds) return "";
