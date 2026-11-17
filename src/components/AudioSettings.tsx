@@ -53,45 +53,53 @@ export default function AudioSettings({
   };
 
   return (
-    <div className="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl backdrop-blur-md overflow-hidden">
+    <div className="rounded-2xl overflow-hidden border border-slate-800/80 shadow-2xl bg-slate-950/80 backdrop-blur-md">
+      {/* ── Header Toggle ── */}
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-5 py-4 flex items-center justify-between bg-slate-950/60 hover:bg-slate-950/80 transition-colors text-left border-b border-slate-800/80"
+        className="w-full px-5 py-4 flex items-center justify-between bg-gradient-to-r from-slate-950/80 via-slate-900/60 to-slate-950/80 hover:from-slate-900/90 hover:to-slate-900/90 transition-all text-left border-b border-slate-800/60"
       >
-        <div className="flex items-center gap-2.5">
-          <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-gradient-to-br from-cyan-500/20 to-purple-500/10 text-cyan-400 border border-cyan-500/30 shadow-sm shadow-cyan-500/10">
             <Sliders className="w-4 h-4" />
           </div>
           <div>
-            <span className="font-semibold text-slate-100 text-sm block">
+            <span className="font-bold text-slate-100 text-sm tracking-tight block">
               8D Spatial Studio Console
             </span>
-            <span className="text-[11px] text-slate-400">
-              Fine-tune 360° orbit rotation, acoustic room reverb, & bass boost
+            <span className="text-[11px] text-slate-500">
+              Fine-tune 360° orbit rotation, acoustic room reverb, &amp; bass boost
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono font-bold uppercase border border-cyan-500/30">
+        <div className="flex items-center gap-2.5">
+          <span className="text-[10px] px-2.5 py-1 rounded-full bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-cyan-300 font-mono font-bold uppercase border border-cyan-500/30 tracking-wide">
             {selectedPresetId}
           </span>
-          {isOpen ? (
-            <ChevronUp className="w-4 h-4 text-slate-400" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-slate-400" />
-          )}
+          <div className="p-1.5 rounded-lg bg-slate-800/60 text-slate-400">
+            {isOpen ? (
+              <ChevronUp className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5" />
+            )}
+          </div>
         </div>
       </button>
 
       {isOpen && (
-        <div className="p-5 space-y-6">
-          {/* Preset Chips */}
+        <div className="p-4 sm:p-5 space-y-5">
+
+          {/* ── Preset Grid ── */}
           <div>
-            <label className="block text-[11px] font-mono uppercase tracking-wider text-slate-400 mb-2.5">
-              Instant 8D Presets
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="h-px flex-1 bg-slate-800/80" />
+              <span className="text-[10px] font-mono uppercase tracking-widest text-slate-500 px-2">
+                Instant 8D Presets
+              </span>
+              <div className="h-px flex-1 bg-slate-800/80" />
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {PRESETS.map((preset) => {
                 const isActive = selectedPresetId === preset.id;
                 return (
@@ -100,21 +108,24 @@ export default function AudioSettings({
                     type="button"
                     disabled={disabled}
                     onClick={() => handlePresetSelect(preset.id)}
-                    className={`p-3 rounded-xl border text-left transition-all ${
+                    className={`p-3 rounded-xl border text-left transition-all group/p relative overflow-hidden ${
                       isActive
-                        ? "border-cyan-500 bg-cyan-500/10 text-cyan-200 ring-1 ring-cyan-500 shadow-md shadow-cyan-500/10"
-                        : "border-slate-800 hover:border-slate-700 bg-slate-950/40 text-slate-300"
+                        ? "border-cyan-500/70 bg-gradient-to-br from-cyan-500/15 to-purple-500/10 text-cyan-200 shadow-lg shadow-cyan-500/10"
+                        : "border-slate-800/80 hover:border-slate-700 bg-slate-900/40 hover:bg-slate-900/70 text-slate-300"
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 font-semibold text-xs">
+                    {isActive && (
+                      <div className="absolute top-0 right-0 w-16 h-16 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />
+                    )}
+                    <div className="flex items-center gap-1.5 font-semibold text-[11px] mb-1">
                       <Sparkles
-                        className={`w-3.5 h-3.5 ${
-                          isActive ? "text-cyan-400" : "text-slate-500"
+                        className={`w-3 h-3 flex-shrink-0 ${
+                          isActive ? "text-cyan-400" : "text-slate-600 group-hover/p:text-slate-400"
                         }`}
                       />
-                      <span>{preset.name}</span>
+                      <span className="truncate">{preset.name}</span>
                     </div>
-                    <p className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                    <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed">
                       {preset.description}
                     </p>
                   </button>
@@ -123,347 +134,283 @@ export default function AudioSettings({
             </div>
           </div>
 
-          {/* Granular Sliders in 2-Columns */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4 border-t border-slate-800/80">
-            {/* Orbit Speed */}
-            <div className="space-y-2 bg-slate-950/40 p-3.5 rounded-xl border border-slate-800/60">
-              <div className="flex justify-between text-xs font-medium text-slate-300">
-                <span className="flex items-center gap-1.5 text-slate-200">
-                  <Compass className="w-3.5 h-3.5 text-cyan-400" />
-                  Orbit Speed
-                </span>
-                <span className="text-cyan-400 font-mono font-bold">
-                  {options.rotationSpeed}s / loop
-                </span>
-              </div>
-              <input
-                type="range"
-                min="2"
-                max="30"
-                step="1"
-                disabled={disabled}
-                value={options.rotationSpeed}
-                onChange={(e) =>
-                  handleOptionChange("rotationSpeed", parseInt(e.target.value))
-                }
-                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-              />
-              <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-                <span>Fast (2s)</span>
-                <span>Normal (12s)</span>
-                <span>Cosmic (30s)</span>
-              </div>
-            </div>
-
-            {/* Orbit Direction */}
-            <div className="space-y-2 bg-slate-950/40 p-3.5 rounded-xl border border-slate-800/60">
-              <span className="block text-xs font-medium text-slate-300 mb-1">
-                Orbit Direction
+          {/* ── Granular Controls ── */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="h-px flex-1 bg-slate-800/80" />
+              <span className="text-[10px] font-mono uppercase tracking-widest text-slate-500 px-2">
+                Fine Controls
               </span>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => handleOptionChange("direction", "clockwise")}
-                  className={`py-2 px-3 rounded-lg border text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${
-                    options.direction === "clockwise"
-                      ? "border-cyan-500 bg-cyan-500/20 text-cyan-300 shadow-sm"
-                      : "border-slate-800 hover:border-slate-700 text-slate-400"
-                  }`}
-                >
-                  <RotateCw className="w-3.5 h-3.5" />
-                  Clockwise ↻
-                </button>
-                <button
-                  type="button"
-                  disabled={disabled}
-                  onClick={() =>
-                    handleOptionChange("direction", "counter-clockwise")
-                  }
-                  className={`py-2 px-3 rounded-lg border text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${
-                    options.direction === "counter-clockwise"
-                      ? "border-cyan-500 bg-cyan-500/20 text-cyan-300 shadow-sm"
-                      : "border-slate-800 hover:border-slate-700 text-slate-400"
-                  }`}
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  Counter-CW ↺
-                </button>
-              </div>
+              <div className="h-px flex-1 bg-slate-800/80" />
             </div>
 
-            {/* Concert Reverb */}
-            <div className="space-y-2 bg-slate-950/40 p-3.5 rounded-xl border border-slate-800/60">
-              <div className="flex justify-between text-xs font-medium text-slate-300">
-                <span className="flex items-center gap-1.5 text-slate-200">
-                  <Radio className="w-3.5 h-3.5 text-purple-400" />
-                  Room Reverb
-                </span>
-                <span className="text-purple-400 font-mono font-bold">
-                  {Math.round(options.reverbLevel * 100)}% Wet
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="0.5"
-                step="0.02"
-                disabled={disabled}
-                value={options.reverbLevel}
-                onChange={(e) =>
-                  handleOptionChange("reverbLevel", parseFloat(e.target.value))
-                }
-                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-purple-400"
-              />
-              <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-                <span>0% (Studio Dry)</span>
-                <span>15% (Natural)</span>
-                <span>50% (Cathedral)</span>
-              </div>
-            </div>
-
-            {/* Sub-Bass Boost */}
-            <div className="space-y-2 bg-slate-950/40 p-3.5 rounded-xl border border-slate-800/60">
-              <div className="flex justify-between text-xs font-medium text-slate-300">
-                <span className="flex items-center gap-1.5 text-slate-200">
-                  <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
-                  Sub-Bass Boost
-                </span>
-                <span className="text-emerald-400 font-mono font-bold">
-                  +{options.bassBoost} dB
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="12"
-                step="1"
-                disabled={disabled}
-                value={options.bassBoost}
-                onChange={(e) =>
-                  handleOptionChange("bassBoost", parseInt(e.target.value))
-                }
-                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-400"
-              />
-              <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-                <span>Flat (0 dB)</span>
-                <span>Club (+4 dB)</span>
-                <span>Max (+12 dB)</span>
-              </div>
-            </div>
-
-            {/* 16D Vertical Elevation */}
-            <div className="space-y-2 bg-slate-950/40 p-3.5 rounded-xl border border-slate-800/60">
-              <div className="flex justify-between text-xs font-medium text-slate-300">
-                <span className="flex items-center gap-1.5 text-slate-200">
-                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                  16D Vertical Elevation
-                </span>
-                <span className="text-cyan-400 font-mono font-bold">
-                  {options.verticalOrbit !== false ? "16D 3D Sphere" : "Flat 8D"}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Orbit Speed */}
+              <div className="space-y-2.5 bg-slate-900/50 p-4 rounded-2xl border border-slate-800/60 hover:border-slate-700/60 transition-colors">
+                <div className="flex justify-between text-xs">
+                  <span className="flex items-center gap-1.5 font-semibold text-slate-200">
+                    <Compass className="w-3.5 h-3.5 text-cyan-400" />
+                    Orbit Speed
+                  </span>
+                  <span className="text-cyan-400 font-mono font-bold bg-cyan-500/10 px-2 py-0.5 rounded-lg border border-cyan-500/20">
+                    {options.rotationSpeed}s / loop
+                  </span>
+                </div>
+                <input
+                  type="range" min="2" max="30" step="1"
                   disabled={disabled}
-                  onClick={() => handleOptionChange("verticalOrbit", true)}
-                  className={`py-2 px-3 rounded-lg border text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${
-                    options.verticalOrbit !== false
-                      ? "border-cyan-500 bg-cyan-500/20 text-cyan-300 shadow-sm"
-                      : "border-slate-800 hover:border-slate-700 text-slate-400"
-                  }`}
-                >
-                  3D Helical ↕
-                </button>
-                <button
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => handleOptionChange("verticalOrbit", false)}
-                  className={`py-2 px-3 rounded-lg border text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${
-                    options.verticalOrbit === false
-                      ? "border-cyan-500 bg-cyan-500/20 text-cyan-300 shadow-sm"
-                      : "border-slate-800 hover:border-slate-700 text-slate-400"
-                  }`}
-                >
-                  Flat Ring ↔
-                </button>
+                  value={options.rotationSpeed}
+                  onChange={(e) => handleOptionChange("rotationSpeed", parseInt(e.target.value))}
+                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                />
+                <div className="flex justify-between text-[10px] text-slate-600 font-mono">
+                  <span>Fast (2s)</span><span>Normal (12s)</span><span>Cosmic (30s)</span>
+                </div>
               </div>
-              <p className="text-[10px] text-slate-500">
-                Sweeps sound vertically over your head and below ear level in true 3D space.
-              </p>
-            </div>
 
-            {/* Center Vocal & Kick Anchor */}
-            <div className="space-y-2 bg-slate-950/40 p-3.5 rounded-xl border border-slate-800/60">
-              <div className="flex justify-between text-xs font-medium text-slate-300">
-                <span className="flex items-center gap-1.5 text-slate-200">
-                  <Headphones className="w-3.5 h-3.5 text-amber-400" />
-                  Center Vocal Anchor
+              {/* Orbit Direction */}
+              <div className="space-y-2.5 bg-slate-900/50 p-4 rounded-2xl border border-slate-800/60 hover:border-slate-700/60 transition-colors">
+                <span className="block text-xs font-semibold text-slate-200">
+                  Orbit Direction
                 </span>
-                <span className="text-amber-400 font-mono font-bold">
-                  {Math.round((options.centerAnchor ?? 0.18) * 100)}%
-                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { val: "clockwise", label: "Clockwise ↻", icon: <RotateCw className="w-3.5 h-3.5" /> },
+                    { val: "counter-clockwise", label: "Counter-CW ↺", icon: <RotateCcw className="w-3.5 h-3.5" /> },
+                  ].map(({ val, label, icon }) => (
+                    <button
+                      key={val}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => handleOptionChange("direction", val)}
+                      className={`py-2.5 px-3 rounded-xl border text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${
+                        options.direction === val
+                          ? "border-cyan-500/70 bg-cyan-500/15 text-cyan-300 shadow-sm"
+                          : "border-slate-800 hover:border-slate-700 text-slate-400"
+                      }`}
+                    >
+                      {icon} {label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <input
-                type="range"
-                min="0"
-                max="0.45"
-                step="0.05"
-                disabled={disabled}
-                value={options.centerAnchor ?? 0.18}
-                onChange={(e) =>
-                  handleOptionChange("centerAnchor", parseFloat(e.target.value))
-                }
-                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
-              />
-              <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-                <span>0% (Full 360)</span>
-                <span>18% (Anchored Lead)</span>
-                <span>45% (Live Arena)</span>
+
+              {/* Room Reverb */}
+              <div className="space-y-2.5 bg-slate-900/50 p-4 rounded-2xl border border-slate-800/60 hover:border-slate-700/60 transition-colors">
+                <div className="flex justify-between text-xs">
+                  <span className="flex items-center gap-1.5 font-semibold text-slate-200">
+                    <Radio className="w-3.5 h-3.5 text-purple-400" />
+                    Room Reverb
+                  </span>
+                  <span className="text-purple-400 font-mono font-bold bg-purple-500/10 px-2 py-0.5 rounded-lg border border-purple-500/20">
+                    {Math.round(options.reverbLevel * 100)}% Wet
+                  </span>
+                </div>
+                <input
+                  type="range" min="0" max="0.5" step="0.02"
+                  disabled={disabled}
+                  value={options.reverbLevel}
+                  onChange={(e) => handleOptionChange("reverbLevel", parseFloat(e.target.value))}
+                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-purple-400"
+                />
+                <div className="flex justify-between text-[10px] text-slate-600 font-mono">
+                  <span>0% (Studio Dry)</span><span>15% (Natural)</span><span>50% (Cathedral)</span>
+                </div>
               </div>
-              <p className="text-[10px] text-slate-500">
-                Keeps vocals and kick drum grounded in front while spatial instruments orbit in 3D.
-              </p>
+
+              {/* Sub-Bass Boost */}
+              <div className="space-y-2.5 bg-slate-900/50 p-4 rounded-2xl border border-slate-800/60 hover:border-slate-700/60 transition-colors">
+                <div className="flex justify-between text-xs">
+                  <span className="flex items-center gap-1.5 font-semibold text-slate-200">
+                    <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                    Sub-Bass Boost
+                  </span>
+                  <span className="text-emerald-400 font-mono font-bold bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
+                    +{options.bassBoost} dB
+                  </span>
+                </div>
+                <input
+                  type="range" min="0" max="12" step="1"
+                  disabled={disabled}
+                  value={options.bassBoost}
+                  onChange={(e) => handleOptionChange("bassBoost", parseInt(e.target.value))}
+                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                />
+                <div className="flex justify-between text-[10px] text-slate-600 font-mono">
+                  <span>Flat (0 dB)</span><span>Club (+4 dB)</span><span>Max (+12 dB)</span>
+                </div>
+              </div>
+
+              {/* 16D Vertical Elevation */}
+              <div className="space-y-2.5 bg-slate-900/50 p-4 rounded-2xl border border-slate-800/60 hover:border-slate-700/60 transition-colors">
+                <div className="flex justify-between text-xs">
+                  <span className="flex items-center gap-1.5 font-semibold text-slate-200">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                    16D Vertical Elevation
+                  </span>
+                  <span className="text-cyan-400 font-mono font-bold bg-cyan-500/10 px-2 py-0.5 rounded-lg border border-cyan-500/20">
+                    {options.verticalOrbit !== false ? "16D Sphere" : "Flat 8D"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { val: true, label: "3D Helical ↕" },
+                    { val: false, label: "Flat Ring ↔" },
+                  ].map(({ val, label }) => (
+                    <button
+                      key={String(val)}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => handleOptionChange("verticalOrbit", val)}
+                      className={`py-2.5 px-3 rounded-xl border text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${
+                        (val === true ? options.verticalOrbit !== false : options.verticalOrbit === false)
+                          ? "border-cyan-500/70 bg-cyan-500/15 text-cyan-300 shadow-sm"
+                          : "border-slate-800 hover:border-slate-700 text-slate-400"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-slate-600 leading-relaxed">
+                  Sweeps sound vertically over your head and below ear level in true 3D space.
+                </p>
+              </div>
+
+              {/* Center Vocal Anchor */}
+              <div className="space-y-2.5 bg-slate-900/50 p-4 rounded-2xl border border-slate-800/60 hover:border-slate-700/60 transition-colors">
+                <div className="flex justify-between text-xs">
+                  <span className="flex items-center gap-1.5 font-semibold text-slate-200">
+                    <Headphones className="w-3.5 h-3.5 text-amber-400" />
+                    Center Vocal Anchor
+                  </span>
+                  <span className="text-amber-400 font-mono font-bold bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">
+                    {Math.round((options.centerAnchor ?? 0.18) * 100)}%
+                  </span>
+                </div>
+                <input
+                  type="range" min="0" max="0.45" step="0.05"
+                  disabled={disabled}
+                  value={options.centerAnchor ?? 0.18}
+                  onChange={(e) => handleOptionChange("centerAnchor", parseFloat(e.target.value))}
+                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                />
+                <div className="flex justify-between text-[10px] text-slate-600 font-mono">
+                  <span>0% (Full 360)</span><span>18% (Anchored)</span><span>45% (Arena)</span>
+                </div>
+                <p className="text-[10px] text-slate-600 leading-relaxed">
+                  Keeps vocals and kick drum grounded in front while spatial instruments orbit in 3D.
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Audio Export & Download Quality Selector */}
-          <div className="pt-4 border-t border-slate-800/80 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400">
-                Audio Export & Download Quality
+          {/* ── Export Quality ── */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="h-px flex-1 bg-slate-800/80" />
+              <span className="text-[10px] font-mono uppercase tracking-widest text-slate-500 px-2 flex items-center gap-1.5">
+                <Zap className="w-3 h-3 text-purple-400" />
+                Export Quality
               </span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20">
                 {options.exportQuality === "320" ? "320 kbps (Studio)" : "192 kbps (Compact)"}
               </span>
             </div>
-
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Option 1: 192 kbps */}
               <button
-                type="button"
-                disabled={disabled}
+                type="button" disabled={disabled}
                 onClick={() => handleOptionChange("exportQuality", "192")}
-                className={`p-3.5 rounded-xl border text-left transition-all relative ${
+                className={`p-4 rounded-2xl border text-left transition-all relative overflow-hidden group/q ${
                   (options.exportQuality || "192") === "192"
-                    ? "border-cyan-500 bg-cyan-500/10 text-cyan-200 ring-1 ring-cyan-500 shadow-md shadow-cyan-500/10"
-                    : "border-slate-800 hover:border-slate-700 bg-slate-950/40 text-slate-300"
+                    ? "border-cyan-500/60 bg-gradient-to-br from-cyan-500/10 to-slate-900/50 shadow-lg shadow-cyan-500/10"
+                    : "border-slate-800/80 hover:border-slate-700 bg-slate-900/40"
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-semibold text-xs">
+                {(options.exportQuality || "192") === "192" && (
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+                )}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-slate-100">
                     <Zap className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>MP3 – Compact</span>
+                    MP3 – Compact
                   </div>
-                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300">
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
                     192 kbps
                   </span>
                 </div>
-                <div className="mt-1.5 space-y-0.5">
-                  <p className="text-[11px] text-slate-300 font-medium">
-                    Default • ~5 MB / 4-min song
-                  </p>
-                  <p className="text-[10px] text-slate-400">
-                    Fastest loading, ultra-smooth on mobile data, transparent fidelity.
-                  </p>
-                </div>
+                <p className="text-[11px] text-slate-300 font-medium">Default • ~5 MB / 4-min song</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Fastest loading, ultra-smooth on mobile data, transparent fidelity.</p>
               </button>
 
-              {/* Option 2: 320 kbps */}
               <button
-                type="button"
-                disabled={disabled}
+                type="button" disabled={disabled}
                 onClick={() => handleOptionChange("exportQuality", "320")}
-                className={`p-3.5 rounded-xl border text-left transition-all relative ${
+                className={`p-4 rounded-2xl border text-left transition-all relative overflow-hidden group/q ${
                   options.exportQuality === "320"
-                    ? "border-purple-500 bg-purple-500/10 text-purple-200 ring-1 ring-purple-500 shadow-md shadow-purple-500/10"
-                    : "border-slate-800 hover:border-slate-700 bg-slate-950/40 text-slate-300"
+                    ? "border-purple-500/60 bg-gradient-to-br from-purple-500/10 to-slate-900/50 shadow-lg shadow-purple-500/10"
+                    : "border-slate-800/80 hover:border-slate-700 bg-slate-900/40"
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-semibold text-xs">
+                {options.exportQuality === "320" && (
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+                )}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-slate-100">
                     <Award className="w-3.5 h-3.5 text-purple-400" />
-                    <span>MP3 – High Fidelity</span>
+                    MP3 – High Fidelity
                   </div>
-                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/30">
                     320 kbps
                   </span>
                 </div>
-                <div className="mt-1.5 space-y-0.5">
-                  <p className="text-[11px] text-purple-200 font-medium">
-                    Audiophile • ~9 MB / 4-min song
-                  </p>
-                  <p className="text-[10px] text-slate-400">
-                    Maximum possible MP3 quality, crystal studio details, strictly ≤ 15 MB.
-                  </p>
-                </div>
+                <p className="text-[11px] text-purple-200 font-medium">Audiophile • ~9 MB / 4-min song</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Maximum possible MP3 quality, crystal studio details, strictly ≤ 15 MB.</p>
               </button>
             </div>
           </div>
 
-          {/* Parallel Queue Conversion Engine */}
-          <div className="pt-4 border-t border-slate-800/80 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400">
-                Parallel Audio Conversions
+          {/* ── Parallel Conversions ── */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="h-px flex-1 bg-slate-800/80" />
+              <span className="text-[10px] font-mono uppercase tracking-widest text-slate-500 px-2 flex items-center gap-1.5">
+                <Zap className="w-3 h-3 text-cyan-400" />
+                Parallel Conversions
               </span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
-                {options.concurrency === 1
-                  ? "1 Track at a time"
-                  : options.concurrency === 3
-                  ? "3 Tracks in parallel"
-                  : "2 Tracks in parallel"}
+                {options.concurrency === 1 ? "1 Track at a time" : options.concurrency === 3 ? "3 Tracks in parallel" : "2 Tracks in parallel"}
               </span>
             </div>
-
             <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => handleOptionChange("concurrency", 1)}
-                className={`py-2 px-2.5 rounded-xl border text-center transition-all ${
-                  options.concurrency === 1
-                    ? "border-cyan-500 bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500"
-                    : "border-slate-800 hover:border-slate-700 bg-slate-950/40 text-slate-400"
-                }`}
-              >
-                <span className="block text-xs font-semibold">1x Single</span>
-                <span className="text-[10px] text-slate-500 block">Battery Saver</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => handleOptionChange("concurrency", 2)}
-                className={`py-2 px-2.5 rounded-xl border text-center transition-all ${
-                  (options.concurrency || 2) === 2
-                    ? "border-cyan-500 bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500"
-                    : "border-slate-800 hover:border-slate-700 bg-slate-950/40 text-slate-400"
-                }`}
-              >
-                <span className="block text-xs font-semibold">2x Parallel</span>
-                <span className="text-[10px] text-cyan-300/80 block">Recommended</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => handleOptionChange("concurrency", 3)}
-                className={`py-2 px-2.5 rounded-xl border text-center transition-all ${
-                  options.concurrency === 3
-                    ? "border-cyan-500 bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500"
-                    : "border-slate-800 hover:border-slate-700 bg-slate-950/40 text-slate-400"
-                }`}
-              >
-                <span className="block text-xs font-semibold">3x Turbo</span>
-                <span className="text-[10px] text-slate-500 block">Fast Desktop</span>
-              </button>
+              {[
+                { n: 1, label: "1× Single", sub: "Battery Saver" },
+                { n: 2, label: "2× Parallel", sub: "Recommended", highlight: true },
+                { n: 3, label: "3× Turbo", sub: "Fast Desktop" },
+              ].map(({ n, label, sub, highlight }) => {
+                const active = (n === 2 ? (options.concurrency || 2) === 2 : options.concurrency === n);
+                return (
+                  <button
+                    key={n}
+                    type="button" disabled={disabled}
+                    onClick={() => handleOptionChange("concurrency", n)}
+                    className={`py-3 px-2 rounded-2xl border text-center transition-all relative overflow-hidden ${
+                      active
+                        ? "border-cyan-500/60 bg-gradient-to-b from-cyan-500/15 to-slate-900/60 shadow-md shadow-cyan-500/10"
+                        : "border-slate-800/80 hover:border-slate-700 bg-slate-900/40"
+                    }`}
+                  >
+                    <span className={`block text-xs font-bold ${active ? "text-cyan-200" : "text-slate-300"}`}>{label}</span>
+                    <span className={`text-[10px] block mt-0.5 ${active && highlight ? "text-cyan-400" : "text-slate-500"}`}>{sub}</span>
+                  </button>
+                );
+              })}
             </div>
-            <p className="text-[10px] text-slate-500">
-              Converts multiple songs in the queue concurrently, cutting total playlist conversion time by 50% to 66%.
+            <p className="text-[10px] text-slate-600 mt-2 leading-relaxed">
+              Converts multiple songs in the queue concurrently, cutting total playlist conversion time by 50%–66%.
             </p>
           </div>
+
         </div>
       )}
     </div>

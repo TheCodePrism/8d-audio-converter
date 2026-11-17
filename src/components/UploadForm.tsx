@@ -59,10 +59,10 @@ export default function UploadForm({
 
   return (
     <div
-      className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer relative overflow-hidden group ${
+      className={`relative rounded-2xl transition-all cursor-pointer group overflow-hidden ${
         dragActive
-          ? "border-cyan-400 bg-cyan-950/20 shadow-xl shadow-cyan-500/10"
-          : "border-slate-800 hover:border-slate-700 bg-slate-950/40 hover:bg-slate-900/40"
+          ? "shadow-2xl shadow-cyan-500/20"
+          : ""
       }`}
       onDragEnter={handleDrag}
       onDragLeave={handleDrag}
@@ -79,37 +79,64 @@ export default function UploadForm({
         multiple
       />
 
-      <div className="space-y-4">
-        <div className="flex justify-center">
-          <div className="p-4 bg-gradient-to-tr from-cyan-500/10 via-purple-500/10 to-indigo-500/10 rounded-2xl border border-slate-700/60 group-hover:scale-105 group-hover:border-cyan-500/50 transition-all shadow-lg">
-            <Upload className="h-10 w-10 text-cyan-400" />
-          </div>
+      {/* Animated border glow on drag */}
+      <div className={`absolute inset-0 rounded-2xl border-2 border-dashed transition-all duration-300 pointer-events-none ${
+        dragActive
+          ? "border-cyan-400 opacity-100"
+          : "border-slate-700/80 group-hover:border-slate-600 opacity-100"
+      }`} />
+
+      {/* Background */}
+      <div className={`absolute inset-0 rounded-2xl transition-all duration-300 ${
+        dragActive
+          ? "bg-cyan-950/25"
+          : "bg-slate-950/50 group-hover:bg-slate-900/60"
+      }`} />
+
+      <div className="relative z-10 flex flex-col items-center gap-5 py-10 px-6 sm:px-8">
+        {/* Icon */}
+        <div className={`p-5 rounded-2xl border transition-all duration-300 shadow-xl ${
+          dragActive
+            ? "bg-cyan-500/20 border-cyan-500/60 scale-110 shadow-cyan-500/30"
+            : "bg-gradient-to-br from-cyan-500/10 via-purple-500/10 to-indigo-500/5 border-slate-700/60 group-hover:border-cyan-500/40 group-hover:scale-105"
+        }`}>
+          {dragActive ? (
+            <Music className="h-9 w-9 text-cyan-300" />
+          ) : (
+            <Upload className="h-9 w-9 text-cyan-400 group-hover:text-cyan-300 transition-colors" />
+          )}
         </div>
 
-        <div className="space-y-1.5">
-          <h3 className="text-base font-semibold text-slate-100 flex items-center justify-center gap-2">
-            <span>Drop audio files here or click to browse</span>
-            {isConverting && (
-              <span className="text-[11px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Queue Processing
-              </span>
-            )}
+        {/* Text */}
+        <div className="text-center space-y-1.5">
+          <h3 className="text-sm sm:text-base font-semibold text-slate-100">
+            {dragActive ? "Release to add to queue" : "Drop audio files here or click to browse"}
           </h3>
-          <p className="text-xs text-slate-400 max-w-md mx-auto">
-            Lossless in-browser conversion. Add files anytime — queued automatically.
+          <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
+            {isConverting
+              ? "Queue is processing — you can still add more tracks anytime."
+              : "Lossless in-browser conversion. All processing stays on your device."}
           </p>
+          {isConverting && (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-2.5 py-1 rounded-full mt-1">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Queue Processing
+            </span>
+          )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] font-mono text-slate-400 pt-1">
-          <span className="px-2.5 py-1 bg-slate-900/80 rounded-lg border border-slate-800">
-            MP3, WAV, M4A, FLAC, OGG
+        {/* Format Pills */}
+        <div className="flex flex-wrap items-center justify-center gap-1.5 text-[10px] sm:text-[11px] font-mono text-slate-500">
+          {["MP3", "WAV", "M4A", "FLAC", "OGG"].map((fmt) => (
+            <span key={fmt} className="px-2 py-0.5 bg-slate-900/80 rounded-md border border-slate-800/80 text-slate-400">
+              {fmt}
+            </span>
+          ))}
+          <span className="px-2 py-0.5 bg-slate-900/80 rounded-md border border-slate-800/80 text-slate-500">
+            Max {maxFileSize / 1024 / 1024} MB
           </span>
-          <span className="px-2.5 py-1 bg-slate-900/80 rounded-lg border border-slate-800">
-            Max {maxFileSize / 1024 / 1024}MB
-          </span>
-          <span className="px-2.5 py-1 bg-slate-900/80 rounded-lg border border-slate-800">
-            Batch Upload Supported
+          <span className="px-2 py-0.5 bg-slate-900/80 rounded-md border border-slate-800/80 text-slate-500">
+            Batch ✓
           </span>
         </div>
       </div>
