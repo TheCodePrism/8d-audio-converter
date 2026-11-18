@@ -91,6 +91,7 @@ export default function AudioPlayer({
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
 
   const initAudioAnalyser = () => {
     if (typeof window === "undefined") return;
@@ -112,7 +113,11 @@ export default function AudioPlayer({
       analyser.fftSize = 512;
       analyser.smoothingTimeConstant = 0.2;
       const source = ctx.createMediaElementSource(audio);
-      source.connect(analyser);
+      const gain = ctx.createGain();
+      gain.gain.value = isMuted ? 0 : volume;
+      gainNodeRef.current = gain;
+      source.connect(gain);
+      gain.connect(analyser);
       analyser.connect(ctx.destination);
       audioContextRef.current = ctx;
       analyserRef.current = analyser;
@@ -278,11 +283,19 @@ export default function AudioPlayer({
     };
   }, [isLooping, onNext, onTimeUpdate, onPlayStateChange]);
 
-  // Volume sync
+  // Volume sync (MediaElement + WebAudio GainNode for iOS & mobile compatibility)
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio) return;
-    audio.volume = isMuted ? 0 : volume;
+    if (audio) {
+      try {
+        audio.volume = isMuted ? 0 : volume;
+      } catch {}
+    }
+    if (gainNodeRef.current) {
+      try {
+        gainNodeRef.current.gain.value = isMuted ? 0 : volume;
+      } catch {}
+    }
   }, [volume, isMuted]);
 
   // MediaSession API integration
@@ -585,7 +598,7 @@ export default function AudioPlayer({
             type="button"
             onClick={() => skipTime(-10)}
             disabled={!src}
-            className="p-2.5 sm:p-2 text-slate-400 hover:text-slate-200 disabled:opacity-40 transition-colors touch-manipulation"
+            className="hidden sm:flex p-2 text-slate-400 hover:text-slate-200 disabled:opacity-40 transition-colors touch-manipulation items-center justify-center"
             title="Rewind 10 seconds"
           >
             <RotateCcw className="w-4 h-4" />
@@ -640,25 +653,25 @@ export default function AudioPlayer({
             type="button"
             onClick={() => skipTime(10)}
             disabled={!src}
-            className="p-2.5 sm:p-2 text-slate-400 hover:text-slate-200 disabled:opacity-40 transition-colors touch-manipulation"
+            className="hidden sm:flex p-2 text-slate-400 hover:text-slate-200 disabled:opacity-40 transition-colors touch-manipulation items-center justify-center"
             title="Fast forward 10 seconds"
           >
             <RotateCw className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Right: Volume (mute-only on xs, slider on sm+) */}
-        <div className="flex items-center gap-1 justify-end">
+        {/* Right: Volume with live slider and touch-friendly thumb */}
+        <div className="flex items-center gap-1 sm:gap-1.5 justify-end shrink-0">
           <button
             type="button"
             onClick={toggleMute}
-            className="p-2.5 sm:p-1.5 text-slate-400 hover:text-slate-200 transition-colors touch-manipulation"
+            className="p-2 sm:p-1.5 text-slate-400 hover:text-slate-200 transition-colors touch-manipulation"
             title={isMuted ? "Unmute" : "Mute"}
           >
             {isMuted || volume === 0 ? (
               <VolumeX className="w-4 h-4 text-red-400" />
             ) : (
-              <Volume2 className="w-4 h-4 text-slate-400" />
+              <Volume2 className="w-4 h-4 text-slate-400 hover:text-cyan-400" />
             )}
           </button>
           <input
@@ -668,7 +681,8 @@ export default function AudioPlayer({
             step="0.01"
             value={isMuted ? 0 : volume}
             onChange={handleVolumeChange}
-            className="hidden sm:block w-16 sm:w-20 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer focus:outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400"
+            aria-label="Volume slider"
+            className="w-16 sm:w-20 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer focus:outline-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:sm:w-2.5 [&::-webkit-slider-thumb]:sm:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400 [&::-webkit-slider-thumb]:shadow-[0_0_8px_rgba(34,211,238,0.7)] touch-none"
             style={{
               background: `linear-gradient(to right, #38bdf8 ${
                 (isMuted ? 0 : volume) * 100
