@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="favGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee" />
+      <stop offset="50%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#c084fc" />
+    </linearGradient>
+    <radialGradient id="favGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#07090e" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Dark Studio Squircle Backdrop -->
+  <rect width="64" height="64" rx="16" fill="#07090e" />
+  <rect x="1" y="1" width="62" height="62" rx="15" stroke="url(#favGrad)" stroke-width="2" stroke-opacity="0.5" />
+  <circle cx="32" cy="32" r="28" fill="url(#favGlow)" />
+
+  <!-- 360° Orbital Ring -->
+  <ellipse cx="32" cy="32" rx="24" ry="10" transform="rotate(-25 32 32)" stroke="#38bdf8" stroke-width="1.6" stroke-dasharray="2 3" opacity="0.6" />
+  <!-- Orbital Light Particle -->
+  <circle cx="48" cy="23" r="2" fill="#22d3ee" />
+
+  <!-- Headphone Over-ear Arch -->
+  <path d="M 17 33 C 17 18, 47 18, 47 33" stroke="url(#favGrad)" stroke-width="3.5" stroke-linecap="round" fill="none" />
+  
+  <!-- Left & Right Ear Cushions -->
+  <rect x="13" y="29" width="6" height="12" rx="3" fill="#0f172a" stroke="#22d3ee" stroke-width="1.8" />
+  <rect x="45" y="29" width="6" height="12" rx="3" fill="#0f172a" stroke="#c084fc" stroke-width="1.8" />
+
+  <!-- Center 8D Core / Figure-8 -->
+  <path d="M 32 32 C 26 32 22 27 22 22 C 22 17 26 13 32 13 C 38 13 42 17 42 22 C 42 27 38 32 32 32 C 25 32 20 37 20 44 C 20 50 25 55 32 55 C 39 55 44 50 44 44 C 44 37 39 32 32 32 Z" 
+        stroke="url(#favGrad)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  
+  <!-- Sound Center Pulse Nodes -->
+  <circle cx="32" cy="22" r="1.8" fill="#22d3ee" />
+  <circle cx="32" cy="44" r="2.2" fill="#c084fc" />
+</svg>

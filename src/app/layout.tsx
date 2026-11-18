@@ -17,6 +17,11 @@ export const metadata: Metadata = {
   title: "8D Audio Converter — Free Online 360° Spatial Sound Generator",
   description:
     "Transform any music or audio track into an immersive 8D spatial audio experience with 360-degree binaural HRTF rotation, deep bass enhancement, and concert reverb.",
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({
