@@ -47,7 +47,7 @@ export default function OrbitVisualizer({
   const ringPulseRef = useRef<number>(0);
 
   // Physics lerp refs for silky fluid wave animation in the sweep wake
-  const wakeAmpsRef = useRef<number[]>(new Array(52).fill(0.1));
+  const wakeAmpsRef = useRef<number[]>(new Array(60).fill(0.1));
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -271,10 +271,10 @@ export default function OrbitVisualizer({
       const orbX = centerX + radius * Math.sin(currentAngle);
       const orbY = centerY - radius * Math.cos(currentAngle);
 
-      // ── Part 2: 300° Flowing Audio Wave Vortex (Smooth undulating wave trailing 300° around the deck) ──
-      const wavePointCount = 52;
-      const wakeArc = (300 * Math.PI) / 180; // Exactly 300° trailing sweep arc (leaves 60° advance buffer)
-      const wakeStartOffset = 0.05; // buffer immediately behind the beam line
+      // ── Part 2: 360° Flowing Audio Wave Vortex (Spiral wave graph trailing 360° around the deck) ──
+      const wavePointCount = 60; // 60 points for high-definition smooth wave across 360°
+      const wakeArc = (358 * Math.PI) / 180; // Full 360° spiral trailing sweep vortex
+      const wakeStartOffset = 0.04; // starts immediately behind the sound orb
       const wakeInner = 36; // clean base around listener disc
       const wakeAvailableLength = radius - wakeInner - 2;
 
@@ -290,7 +290,7 @@ export default function OrbitVisualizer({
       const secondaryPoints: { x: number; y: number }[] = [];
 
       for (let i = 0; i < wavePointCount; i++) {
-        const f = i / (wavePointCount - 1); // 0 (right behind beam) → 1 (tail of 300° vortex)
+        const f = i / (wavePointCount - 1); // 0 (at sound orb) → 1.0 (spiral tail wrapping full 360°)
 
         let targetAmp = 0;
         if (hasAudioData && freqDataArray) {
@@ -302,8 +302,8 @@ export default function OrbitVisualizer({
           targetAmp = 0.07 + 0.06 * Math.sin(idlePhaseRef.current * 0.7 - i * 0.18);
         }
 
-        // Liquid traveling harmonic wave cascade across the 300° vortex
-        const waveCascade = Math.sin(now * 0.007 - f * 10.5);
+        // Liquid traveling harmonic wave cascade across the 360° vortex
+        const waveCascade = Math.sin(now * 0.007 - f * 12.0);
         const dynamicAmp = targetAmp * 0.7 + (waveCascade * 0.5 + 0.5) * targetAmp * 0.5;
 
         // Smooth physics lerp
@@ -312,9 +312,9 @@ export default function OrbitVisualizer({
         smoothedAmps[i] = currentA + (dynamicAmp - currentA) * lerpFactor;
         const amp = smoothedAmps[i];
 
-        // Smooth cosine taper towards the 300° tail
-        const trailFade = Math.pow(Math.cos(f * (Math.PI * 0.5)), 1.1);
-        const waveHeight = Math.max(3.5, amp * wakeAvailableLength * (0.28 + 0.72 * trailFade));
+        // Smooth spiral taper from outer orb orbit (f=0) down to inner base (f=1)
+        const trailFade = Math.pow(Math.cos(f * (Math.PI * 0.5)), 1.05);
+        const waveHeight = Math.max(3.0, amp * wakeAvailableLength * (0.25 + 0.75 * trailFade));
 
         const barAngle = currentAngle - dirMultiplier * (wakeStartOffset + f * wakeArc);
 
@@ -328,7 +328,7 @@ export default function OrbitVisualizer({
         const yE = centerY - Math.cos(tipAngle) * (wakeInner + waveHeight);
 
         // Secondary harmonic echo wave (for layered depth)
-        const secHeight = waveHeight * (0.55 + 0.15 * Math.sin(now * 0.009 - f * 12.0));
+        const secHeight = waveHeight * (0.55 + 0.15 * Math.sin(now * 0.009 - f * 14.0));
         const xSec = centerX + Math.sin(tipAngle) * (wakeInner + secHeight);
         const ySec = centerY - Math.cos(tipAngle) * (wakeInner + secHeight);
 
@@ -366,12 +366,12 @@ export default function OrbitVisualizer({
         ctx.fill();
         ctx.restore();
 
-        // ── 2. Segment-by-Segment Luminous Wave Crest (Seamless Color along 300° Vortex) ──
+        // ── 2. Segment-by-Segment Luminous Wave Crest (Seamless Color along 360° Vortex) ──
         for (let i = 1; i < crestPoints.length; i++) {
           const prev = crestPoints[i - 1];
           const curr = crestPoints[i];
           const f = i / (crestPoints.length - 1);
-          const trailFade = Math.pow(Math.cos(f * (Math.PI * 0.5)), 1.1);
+          const trailFade = Math.pow(Math.cos(f * (Math.PI * 0.5)), 1.05);
 
           // Color transition: Electric Cyan (f=0) → Neon Sky Blue (f=0.45) → Ultraviolet Purple (f=1.0)
           let cr = 34, cg = 211, cb = 238;
@@ -422,10 +422,10 @@ export default function OrbitVisualizer({
           ctx.setLineDash([]);
         }
 
-        // ── 3. Floating Sparkling Nodes on Major Peaks across the 300° Vortex ──
+        // ── 3. Floating Sparkling Nodes on Major Peaks across the Vortex ──
         for (let i = 2; i < crestPoints.length - 2; i += 3) {
           const pt = crestPoints[i];
-          if (isPlaying && pt.amp > 0.35 && pt.f < 0.8) {
+          if (isPlaying && pt.amp > 0.35 && pt.f < 0.85) {
             const alpha = Math.min(1, pt.amp + 0.35);
             ctx.beginPath();
             ctx.arc(pt.x, pt.y, 1.6, 0, 2 * Math.PI);
@@ -609,11 +609,11 @@ export default function OrbitVisualizer({
         className="absolute inset-0 block pointer-events-none z-10"
       />
 
-      {/* Layer 5 — Listener disc + teardrop needle */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none z-10">
+      {/* Layer 5 — Listener disc + teardrop needle (precisely centered at 50% 50%) */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none select-none z-10">
         <div
           ref={listenerDiscRef}
-          className={`relative p-3.5 rounded-full bg-slate-950/85 border border-cyan-400/60 backdrop-blur-md shadow-xl shadow-cyan-500/25 transition-transform duration-75 ${
+          className={`relative p-3.5 rounded-full bg-slate-950/85 border border-cyan-400/60 backdrop-blur-md shadow-xl shadow-cyan-500/25 transition-transform duration-75 flex items-center justify-center ${
             isPlaying
               ? "ring-2 ring-cyan-400/50 shadow-[0_0_18px_rgba(34,211,238,0.35)]"
               : "opacity-80 ring-1 ring-cyan-400/20"
@@ -639,10 +639,12 @@ export default function OrbitVisualizer({
             </svg>
           </div>
           <Headphones className="w-7 h-7 text-cyan-300 drop-shadow-[0_0_10px_rgba(56,189,248,0.8)]" />
+
+          {/* Listener Label anchored below the disc without shifting the disc's center */}
+          <span className="absolute top-[calc(100%+3px)] left-1/2 -translate-x-1/2 whitespace-nowrap text-[8px] sm:text-[9px] tracking-widest text-cyan-200/90 font-mono font-bold uppercase drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] pointer-events-none">
+            Listener
+          </span>
         </div>
-        <span className="text-[8px] sm:text-[9px] tracking-widest text-cyan-200/90 font-mono font-bold uppercase mt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
-          Listener
-        </span>
       </div>
 
       {/* Layer 6 — Top HUD */}

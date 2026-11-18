@@ -13,6 +13,9 @@ import {
   Sliders,
   ListMusic,
   Plus,
+  Play,
+  Pause,
+  SkipForward,
   HardDrive,
   Check,
 } from "lucide-react";
@@ -78,10 +81,12 @@ export function getYouTubeUrl(item?: {
   return null;
 }
 
+type MobileTab = "player" | "queue" | "add" | "settings";
+
 export default function AudioConverter() {
   const [activeStudioTab, setActiveStudioTab] = useState<"queue" | "add" | "settings">("add");
   const [addMode, setAddMode] = useState<"upload" | "youtube" | "library">("upload");
-  const [mobileTab, setMobileTab] = useState<"player" | "studio">("player");
+  const [mobileTab, setMobileTab] = useState<MobileTab>("player");
 
   const [audioFiles, setAudioFiles] = useState<AudioFileItem[]>([]);
   const [currentTrackIndex, setCurrentTrackIndex] = useState<number>(0);
@@ -90,6 +95,8 @@ export default function AudioConverter() {
   const [isShuffle, setIsShuffle] = useState<boolean>(false);
   const [isLooping, setIsLooping] = useState<boolean>(false);
   const [activePlaybackTime, setActivePlaybackTime] = useState<number>(0);
+  const [activeTrackDuration, setActiveTrackDuration] = useState<number>(0);
+  const playerRef = useRef<{ togglePlay: () => Promise<void> } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Context Menu & Quick Toast State
@@ -825,43 +832,6 @@ export default function AudioConverter() {
         </Alert>
       )}
 
-      {/* Mobile Top Navigation Segmented Switcher — sticky at top on mobile */}
-      <div className="lg:hidden sticky top-16 z-30 flex items-center p-1 bg-slate-900/95 border border-slate-800 rounded-2xl shadow-xl backdrop-blur-md">
-        <button
-          type="button"
-          onClick={() => setMobileTab("player")}
-          className={`flex-1 py-3 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all touch-manipulation ${
-            mobileTab === "player"
-              ? "bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
-              : "text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          <Headphones className="w-4 h-4" />
-          <span>8D Player</span>
-          {activeTrack?.status === "complete" && isPlaying && (
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setMobileTab("studio")}
-          className={`flex-1 py-3 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all touch-manipulation ${
-            mobileTab === "studio"
-              ? "bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
-              : "text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          <ListMusic className="w-4 h-4" />
-          <span>Queue</span>
-          {audioFiles.length > 0 && (
-            <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-mono leading-none">
-              {audioFiles.length}
-            </span>
-          )}
-        </button>
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
         {/* ========================================================= */}
         {/* LEFT COLUMN: THE 8D/16D SPATIAL MUSIC PLAYER (6 COLS)     */}
@@ -894,6 +864,8 @@ export default function AudioConverter() {
                 onCopySourceUrl={(url) => copyToClipboard(url, "YouTube link")}
                 is8DReady={!!activeTrack.convertedUrl}
                 options={options}
+                playerRef={playerRef}
+                onDurationChange={setActiveTrackDuration}
                 isShuffle={isShuffle}
                 onToggleShuffle={() => setIsShuffle((prev) => !prev)}
                 isLooping={isLooping}
@@ -938,7 +910,7 @@ export default function AudioConverter() {
                   <button
                     type="button"
                     onClick={() => {
-                      setMobileTab("studio");
+                      setMobileTab("add");
                       setActiveStudioTab("add");
                     }}
                     className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition-all"
@@ -955,34 +927,14 @@ export default function AudioConverter() {
         {/* ========================================================= */}
         {/* RIGHT COLUMN: QUEUE, ADD MUSIC & 8D STUDIO TABS (6 COLS)  */}
         {/* ========================================================= */}
-        <div className={`space-y-4 lg:col-span-6 ${mobileTab === "studio" ? "block" : "hidden lg:block"}`}>
-          {/* Quick Return to Player Banner on Mobile */}
-          {activeTrack && (
-            <div
-              onClick={() => setMobileTab("player")}
-              className="lg:hidden p-3 bg-gradient-to-r from-cyan-950/60 to-purple-950/40 border border-cyan-500/40 rounded-2xl flex items-center justify-between cursor-pointer hover:border-cyan-400 transition-all shadow-lg"
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span className={`w-2.5 h-2.5 rounded-full ${isPlaying ? "bg-emerald-400 animate-ping" : "bg-cyan-400"}`} />
-                <div className="min-w-0">
-                  <span className="text-[10px] text-cyan-400 font-mono font-semibold uppercase block">
-                    {isPlaying ? "Now Playing" : "Loaded in Deck"}
-                  </span>
-                  <span className="text-xs font-semibold text-white truncate block max-w-[200px]">
-                    {activeTrack.name}
-                  </span>
-                </div>
-              </div>
-              <span className="text-[11px] font-semibold text-cyan-300 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/30">
-                View Deck →
-              </span>
-            </div>
-          )}
-
+        <div className={`space-y-4 lg:col-span-6 ${mobileTab !== "player" ? "block" : "hidden lg:block"}`}>
           <div className="flex items-center justify-between p-1.5 bg-slate-900/90 border border-slate-800 rounded-2xl">
             <button
               type="button"
-              onClick={() => setActiveStudioTab("queue")}
+              onClick={() => {
+                setActiveStudioTab("queue");
+                setMobileTab("queue");
+              }}
               className={`flex-1 py-3 px-2 sm:px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
                 activeStudioTab === "queue"
                   ? "bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm"
@@ -1000,7 +952,10 @@ export default function AudioConverter() {
 
             <button
               type="button"
-              onClick={() => setActiveStudioTab("add")}
+              onClick={() => {
+                setActiveStudioTab("add");
+                setMobileTab("add");
+              }}
               className={`flex-1 py-3 px-2 sm:px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
                 activeStudioTab === "add"
                   ? "bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm"
@@ -1013,7 +968,10 @@ export default function AudioConverter() {
 
             <button
               type="button"
-              onClick={() => setActiveStudioTab("settings")}
+              onClick={() => {
+                setActiveStudioTab("settings");
+                setMobileTab("settings");
+              }}
               className={`flex-1 py-3 px-2 sm:px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
                 activeStudioTab === "settings"
                   ? "bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm"
@@ -1207,9 +1165,176 @@ export default function AudioConverter() {
         onRemove={removeTrack}
       />
 
+      {/* ── Persistent Floating Mini-Player on Mobile ── */}
+      {activeTrack && mobileTab !== "player" && (
+        <div className="lg:hidden fixed bottom-[68px] inset-x-2 z-40 bg-slate-950/95 border border-slate-800/90 rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200">
+          {/* Top Thin Audio Scrub/Progress Line */}
+          <div className="w-full h-1 bg-slate-800">
+            <div
+              className="h-full bg-gradient-to-r from-cyan-400 via-purple-500 to-pink-500 transition-all duration-150"
+              style={{
+                width: `${
+                  activeTrackDuration > 0
+                    ? Math.min(100, Math.max(0, (activePlaybackTime / activeTrackDuration) * 100))
+                    : 0
+                }%`,
+              }}
+            />
+          </div>
+
+          <div className="p-2 flex items-center justify-between gap-3">
+            {/* Clickable Track Info (Tapping returns to 360° Player) */}
+            <div
+              onClick={() => setMobileTab("player")}
+              className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer"
+            >
+              <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-slate-800 border border-slate-700/60 shrink-0 flex items-center justify-center">
+                {activeTrack.thumbnail ? (
+                  <img
+                    src={activeTrack.thumbnail}
+                    alt={activeTrack.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <Headphones className="w-5 h-5 text-cyan-400" />
+                )}
+                {isPlaying && (
+                  <div className="absolute inset-0 bg-cyan-950/40 flex items-center justify-center">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  </div>
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <span className="text-xs font-semibold text-white truncate block">
+                  {activeTrack.name}
+                </span>
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-mono">
+                  <span className="text-cyan-400 font-bold">
+                    {activeTrack.status === "complete" ? "8D ACTIVE" : "ORIGINAL"}
+                  </span>
+                  <span>•</span>
+                  <span>Tap for 360° Deck</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Transport Controls */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => playerRef.current?.togglePlay()}
+                className="w-10 h-10 rounded-xl bg-cyan-500 hover:bg-cyan-400 active:scale-95 text-slate-950 flex items-center justify-center transition-all shadow-md shadow-cyan-500/20 touch-manipulation"
+                title={isPlaying ? "Pause" : "Play"}
+              >
+                {isPlaying ? (
+                  <Pause className="w-5 h-5 fill-current" />
+                ) : (
+                  <Play className="w-5 h-5 fill-current ml-0.5" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleNextTrack(true)}
+                className="w-10 h-10 rounded-xl hover:bg-slate-800 active:scale-95 text-slate-300 hover:text-white flex items-center justify-center transition-all touch-manipulation"
+                title="Next Track"
+              >
+                <SkipForward className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Fixed Bottom Navigation Bar on Mobile ── */}
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/80 px-2 py-1.5 flex items-center justify-around shadow-2xl safe-area-pb">
+        {/* Tab 1: 360° Player */}
+        <button
+          type="button"
+          onClick={() => setMobileTab("player")}
+          className={`flex-1 py-1.5 flex flex-col items-center justify-center rounded-xl transition-all touch-manipulation ${
+            mobileTab === "player"
+              ? "text-cyan-400 font-bold"
+              : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <div className="relative">
+            <Headphones className="w-5 h-5" />
+            {isPlaying && (
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            )}
+          </div>
+          <span className="text-[10px] mt-0.5 tracking-tight">Player</span>
+        </button>
+
+        {/* Tab 2: Queue */}
+        <button
+          type="button"
+          onClick={() => {
+            setMobileTab("queue");
+            setActiveStudioTab("queue");
+          }}
+          className={`flex-1 py-1.5 flex flex-col items-center justify-center rounded-xl transition-all touch-manipulation ${
+            mobileTab === "queue"
+              ? "text-cyan-400 font-bold"
+              : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <div className="relative">
+            <ListMusic className="w-5 h-5" />
+            {audioFiles.length > 0 && (
+              <span className="absolute -top-1 -right-2 px-1 py-0.2 min-w-[14px] text-center rounded-full bg-cyan-500 text-slate-950 text-[9px] font-mono font-bold leading-tight">
+                {audioFiles.length}
+              </span>
+            )}
+          </div>
+          <span className="text-[10px] mt-0.5 tracking-tight">Queue</span>
+        </button>
+
+        {/* Tab 3: Add Music */}
+        <button
+          type="button"
+          onClick={() => {
+            setMobileTab("add");
+            setActiveStudioTab("add");
+          }}
+          className={`flex-1 py-1.5 flex flex-col items-center justify-center rounded-xl transition-all touch-manipulation ${
+            mobileTab === "add"
+              ? "text-cyan-400 font-bold"
+              : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <div className="relative">
+            <Plus className="w-5 h-5" />
+            {ytState.isFetching && (
+              <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            )}
+          </div>
+          <span className="text-[10px] mt-0.5 tracking-tight">Add Music</span>
+        </button>
+
+        {/* Tab 4: 8D Tuning */}
+        <button
+          type="button"
+          onClick={() => {
+            setMobileTab("settings");
+            setActiveStudioTab("settings");
+          }}
+          className={`flex-1 py-1.5 flex flex-col items-center justify-center rounded-xl transition-all touch-manipulation ${
+            mobileTab === "settings"
+              ? "text-cyan-400 font-bold"
+              : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <Sliders className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5 tracking-tight">8D Tuning</span>
+        </button>
+      </nav>
+
       {/* ── Sleek Bottom Toast Notification ── */}
       {toastMessage && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-cyan-500/40 px-4 py-2.5 rounded-2xl shadow-2xl backdrop-blur-xl flex items-center gap-2.5 text-xs font-semibold text-slate-100 animate-in fade-in slide-in-from-bottom-3 duration-200">
+        <div className="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-cyan-500/40 px-4 py-2.5 rounded-2xl shadow-2xl backdrop-blur-xl flex items-center gap-2.5 text-xs font-semibold text-slate-100 animate-in fade-in slide-in-from-bottom-3 duration-200">
           <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
             <Check className="w-3 h-3 stroke-[2.5]" />
           </div>

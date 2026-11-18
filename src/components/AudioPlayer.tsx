@@ -36,6 +36,8 @@ interface AudioPlayerProps {
   options: AudioProcessingOptions;
   onTimeUpdate?: (currentTime: number) => void;
   onPlayStateChange?: (isPlaying: boolean) => void;
+  onDurationChange?: (duration: number) => void;
+  playerRef?: React.MutableRefObject<{ togglePlay: () => Promise<void> } | null>;
   onNext?: (autoPlay?: boolean) => void;
   onPrev?: (autoPlay?: boolean) => void;
   isShuffle?: boolean;
@@ -58,6 +60,8 @@ export default function AudioPlayer({
   options,
   onTimeUpdate,
   onPlayStateChange,
+  onDurationChange,
+  playerRef,
   onNext,
   onPrev,
   isShuffle: propIsShuffle,
@@ -226,7 +230,9 @@ export default function AudioPlayer({
     };
 
     const handleLoadedMetadata = () => {
-      setDuration(audio.duration || 0);
+      const dur = audio.duration || 0;
+      setDuration(dur);
+      if (onDurationChange) onDurationChange(dur);
     };
 
     const handlePlay = () => {
@@ -385,6 +391,17 @@ export default function AudioPlayer({
     }
   };
 
+  useEffect(() => {
+    if (playerRef) {
+      playerRef.current = { togglePlay };
+    }
+    return () => {
+      if (playerRef) {
+        playerRef.current = null;
+      }
+    };
+  }, [playerRef]);
+
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
     const audio = audioRef.current;
@@ -483,7 +500,7 @@ export default function AudioPlayer({
               onClick={() =>
                 setPlaybackMode((prev) => (prev === "8d" ? "original" : "8d"))
               }
-              className={`p-2 sm:px-3 sm:py-1.5 rounded-xl text-[11px] font-mono font-semibold transition-all flex items-center gap-1.5 border shrink-0 shadow-sm ${
+              className={`px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-xl text-[10px] sm:text-[11px] font-mono font-bold transition-all flex items-center gap-1.5 border shrink-0 shadow-sm ${
                 playbackMode === "8d"
                   ? "bg-cyan-500/20 border-cyan-400/80 text-cyan-200 shadow-cyan-500/15"
                   : "bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200"
@@ -492,6 +509,7 @@ export default function AudioPlayer({
             >
               <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
               <span className="hidden sm:inline">{playbackMode === "8d" ? "8D SPATIAL" : "BYPASS STEREO"}</span>
+              <span className="sm:hidden font-bold">{playbackMode === "8d" ? "8D" : "STEREO"}</span>
             </button>
           )}
 
