@@ -148,16 +148,14 @@ export default function OrbitVisualizer({
       }
 
       // ── Part 1: Cover Image Audio-Reactive CSS Filter ──
-      // Brightness ← kick, Saturation ← mids, Contrast ← overall, Hue ← orb angle
+      // Brightness ← kick, Saturation ← mids, Contrast ← overall (no hue shift)
       if (coverImgRef.current) {
         const el = coverImgRef.current as HTMLElement;
         if (isPlaying && hasAudioData) {
           const brightness = (1 + kickEnergy * 0.45).toFixed(3);
           const saturation = (1 + midEnergy * 0.9).toFixed(3);
           const contrast   = (1 + instantEnergy * 0.18).toFixed(3);
-          // Hue drifts very subtly as orb orbits (×0.08 keeps it safe)
-          const hueShift   = ((angleRef.current * 180) / Math.PI * 0.08).toFixed(1);
-          el.style.filter = `brightness(${brightness}) saturate(${saturation}) contrast(${contrast}) hue-rotate(${hueShift}deg)`;
+          el.style.filter = `brightness(${brightness}) saturate(${saturation}) contrast(${contrast})`;
         } else if (isPlaying) {
           // No analyser — just scale & gentle brightness
           const brightness = (1 + (currentScaleRef.current - 1) * 2).toFixed(3);
