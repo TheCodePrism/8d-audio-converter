@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Headphones, Github, Sparkles, Radio, Activity } from "lucide-react";
+import BrandLogo from "./BrandLogo";
 
 export default function Header() {
   return (
@@ -9,11 +10,9 @@ export default function Header() {
           {/* Logo & Brand */}
           <div className="flex items-center">
             <Link href="/" className="flex items-center space-x-3 group">
-              <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-purple-600 text-white shadow-lg shadow-cyan-500/25 group-hover:scale-105 transition-all">
-                <Headphones className="h-5 w-5" />
-              </div>
+              <BrandLogo size={42} className="shrink-0" />
               <div>
-                <span className="text-base font-bold text-white tracking-tight flex items-center gap-1.5">
+                <span className="text-base font-bold text-white tracking-tight flex items-center gap-1.5 group-hover:text-cyan-300 transition-colors">
                   8D Audio Studio
                   <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 uppercase">
                     PRO
