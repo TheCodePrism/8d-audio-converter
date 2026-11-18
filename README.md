@@ -1,4 +1,6 @@
-# 8D Audio Studio & Spatial Music Player 🎧⚡
+# Sphere8D — Spatial Music Studio & 8D Audio Player 🎧⚡
+
+> **Live Application**: [https://sphere8d.vercel.app](https://sphere8d.vercel.app)
 
 Transform standard stereo or mono songs into an immersive **8D spatial audio experience** with real-time 360° binaural rotation, room reverberation, sub-bass enhancement, and a dedicated music player deck.
 

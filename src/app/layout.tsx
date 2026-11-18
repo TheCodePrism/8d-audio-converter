@@ -14,9 +14,16 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "8D Audio Converter — Free Online 360° Spatial Sound Generator",
+  metadataBase: new URL("https://sphere8d.vercel.app"),
+  title: "Sphere8D — Free Online 360° Spatial Sound & 8D Audio Studio",
   description:
     "Transform any music or audio track into an immersive 8D spatial audio experience with 360-degree binaural HRTF rotation, deep bass enhancement, and concert reverb.",
+  openGraph: {
+    title: "Sphere8D — 360° Binaural Spatial Music Studio",
+    description: "Immersive 8D audio converter and 360° spatial music player.",
+    url: "https://sphere8d.vercel.app",
+    siteName: "Sphere8D",
+  },
   icons: {
     icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
     shortcut: "/icon.svg",
