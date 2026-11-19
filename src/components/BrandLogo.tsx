@@ -42,17 +42,17 @@ export default function BrandLogo({
         <defs>
           {/* Primary 8D Neon Gradient */}
           <linearGradient id="logo8DGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#22d3ee" />
-            <stop offset="50%" stop-color="#3b82f6" />
-            <stop offset="100%" stop-color="#a855f7" />
+            <stop offset="0%" stopColor="#22d3ee" />
+            <stop offset="50%" stopColor="#3b82f6" />
+            <stop offset="100%" stopColor="#a855f7" />
           </linearGradient>
 
           {/* Secondary Wire Gradient */}
           <linearGradient id="wireGrad" x1="0%" y1="100%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#06b6d4" />
-            <stop offset="40%" stop-color="#818cf8" />
-            <stop offset="80%" stop-color="#c084fc" />
-            <stop offset="100%" stop-color="#f43f5e" />
+            <stop offset="0%" stopColor="#06b6d4" />
+            <stop offset="40%" stopColor="#818cf8" />
+            <stop offset="80%" stopColor="#c084fc" />
+            <stop offset="100%" stopColor="#f43f5e" />
           </linearGradient>
 
           {/* Glowing filter */}
