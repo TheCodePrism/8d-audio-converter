@@ -39,6 +39,7 @@ export default function YouTubeInput({
     new Set()
   );
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [wakingUpNotice, setWakingUpNotice] = useState<string | null>(null);
 
   // Sync state change with parent so tabs can display live fetching/ready indicators
   React.useEffect(() => {
@@ -58,46 +59,101 @@ export default function YouTubeInput({
 
   const handleFetchInfo = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!url.trim()) return;
+    const targetUrl = url.trim();
+    if (!targetUrl) return;
+
+    // Fast client-side sanity check: Detect truncated or cut-off playlist URLs
+    if (targetUrl.includes("list=") && !targetUrl.includes("watch?v=")) {
+      try {
+        const u = new URL(targetUrl);
+        const listParam = u.searchParams.get("list");
+        if (listParam && listParam.length < 16) {
+          setError(
+            `This playlist link appears incomplete or cut off ("${listParam}"). Standard YouTube playlist IDs are ~34 characters long. Please copy and paste the entire URL from YouTube or YouTube Music.`
+          );
+          return;
+        }
+      } catch {
+        // Not a standard URL, allow fetch to handle validation
+      }
+    }
 
     setError(null);
+    setWakingUpNotice(null);
     setFeedbackMessage(null);
     setIsLoading(true);
     setInfo(null);
     setSelectedTrackIds(new Set());
 
-    try {
-      const res = await fetch("/api/youtube/info", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
-      });
+    const maxRetries = 2;
+    let attempt = 0;
 
-      const rawText = await res.text();
-      let data: any = null;
+    const executeFetch = async (): Promise<void> => {
       try {
-        data = JSON.parse(rawText);
-      } catch {
-        throw new Error(
-          res.ok
-            ? "Invalid response from server."
-            : "The YouTube service is currently waking up or unavailable. Please retry in a few seconds."
-        );
-      }
+        const res = await fetch("/api/youtube/info", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: targetUrl }),
+        });
 
-      if (!res.ok) {
-        throw new Error(data?.error || "Failed to load YouTube data.");
-      }
+        const rawText = await res.text();
+        let data: any = null;
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          // If server returned non-JSON (e.g. 502/503/504 gateway timeout while waking up)
+          if (attempt < maxRetries) {
+            attempt++;
+            setWakingUpNotice(
+              `The conversion engine is waking up from idle sleep (~25s on free hosting). Auto-retrying (attempt ${attempt}/${maxRetries})...`
+            );
+            await new Promise((r) => setTimeout(r, 6000));
+            return executeFetch();
+          }
+          throw new Error(
+            "The YouTube service is currently waking up from idle sleep. Please retry in a few moments."
+          );
+        }
 
-      setInfo(data);
-      if (data.tracks && data.tracks.length > 0) {
-        setSelectedTrackIds(new Set(data.tracks.map((t: YouTubeTrack) => t.id)));
+        if (!res.ok) {
+          if (
+            (res.status === 502 || res.status === 503 || res.status === 504) &&
+            attempt < maxRetries
+          ) {
+            attempt++;
+            setWakingUpNotice(
+              `The conversion engine is waking up from idle sleep (~25s on free hosting). Auto-retrying (attempt ${attempt}/${maxRetries})...`
+            );
+            await new Promise((r) => setTimeout(r, 6000));
+            return executeFetch();
+          }
+
+          let errMsg = data?.error || "Failed to load YouTube data.";
+          if (errMsg.includes("HTTP Error 400") || errMsg.includes("does not exist")) {
+            errMsg = "This playlist does not exist, is private, or the link was truncated. Please verify the URL.";
+          }
+          throw new Error(errMsg);
+        }
+
+        setWakingUpNotice(null);
+        setInfo(data);
+        if (data.tracks && data.tracks.length > 0) {
+          setSelectedTrackIds(new Set(data.tracks.map((t: YouTubeTrack) => t.id)));
+        }
+      } catch (err: any) {
+        setWakingUpNotice(null);
+        throw err;
       }
+    };
+
+    try {
+      await executeFetch();
     } catch (err: any) {
       console.error(err);
       setError(err?.message || "Could not retrieve YouTube video info.");
     } finally {
       setIsLoading(false);
+      setWakingUpNotice(null);
     }
   };
 
@@ -187,6 +243,13 @@ export default function YouTubeInput({
             {feedbackMessage}
           </AlertDescription>
         </Alert>
+      )}
+
+      {wakingUpNotice && (
+        <div className="flex items-center gap-2.5 p-3.5 bg-amber-950/40 border border-amber-500/40 rounded-xl text-amber-200 text-xs">
+          <Loader2 className="w-4 h-4 text-amber-400 animate-spin shrink-0" />
+          <span>{wakingUpNotice}</span>
+        </div>
       )}
 
       {error && (

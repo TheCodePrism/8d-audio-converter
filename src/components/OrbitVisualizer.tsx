@@ -608,10 +608,10 @@ export default function OrbitVisualizer({
       />
 
       {/* Layer 5 — Listener disc + teardrop needle (precisely centered at 50% 50%) */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none select-none z-10">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-14 h-14 flex items-center justify-center pointer-events-none select-none z-10">
         <div
           ref={listenerDiscRef}
-          className={`relative p-3.5 rounded-full bg-slate-950/85 border border-cyan-400/60 backdrop-blur-md shadow-xl shadow-cyan-500/25 transition-transform duration-75 flex items-center justify-center ${
+          className={`relative w-14 h-14 rounded-full bg-slate-950/85 border border-cyan-400/60 backdrop-blur-md shadow-xl shadow-cyan-500/25 transition-transform duration-75 flex items-center justify-center ${
             isPlaying
               ? "ring-2 ring-cyan-400/50 shadow-[0_0_18px_rgba(34,211,238,0.35)]"
               : "opacity-80 ring-1 ring-cyan-400/20"

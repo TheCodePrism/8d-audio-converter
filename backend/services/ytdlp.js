@@ -1,0 +1,256 @@
+const { execFile, spawn } = require("child_process");
+const { promisify } = require("util");
+const { getYtDlpPath } = require("../utils/binaries");
+const { getCookieArgs, getProxyArgs } = require("../utils/auth");
+const { extractVideoId } = require("../utils/youtube");
+const { YTDLP_EXTRACT_TIMEOUT_MS } = require("../config");
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * Extracts metadata for a single video or full playlist using yt-dlp,
+ * with fast oEmbed pre-check and resilient fallback.
+ */
+async function extractInfo(cleanUrl) {
+  const parsed = new URL(cleanUrl);
+  const isPlaylistUrl = parsed.searchParams.has("list");
+
+  // Fast path: Official YouTube oEmbed API for single tracks
+  if (!isPlaylistUrl) {
+    try {
+      const videoId = extractVideoId(cleanUrl);
+      if (videoId) {
+        const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(cleanUrl)}&format=json`;
+        const oembedRes = await fetch(oembedUrl);
+        if (oembedRes.ok) {
+          const oembedData = await oembedRes.json();
+          const bestThumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+          return {
+            isPlaylist: false,
+            title: oembedData.title || "YouTube Track",
+            thumbnail: bestThumbnail,
+            tracks: [
+              {
+                id: videoId,
+                title: oembedData.title || "YouTube Track",
+                url: cleanUrl,
+                thumbnail: bestThumbnail,
+                author: oembedData.author_name || undefined,
+              },
+            ],
+          };
+        }
+      }
+    } catch (fastErr) {
+      console.warn("[YouTube Info] Fast oEmbed check failed, falling back to yt-dlp:", fastErr.message);
+    }
+  }
+
+  const ytDlpBinary = getYtDlpPath();
+  const cookieArgs = getCookieArgs();
+
+  const baseArgs = [
+    "--js-runtimes",
+    "deno",
+    "--remote-components",
+    "ejs:github",
+    "--extractor-args",
+    "youtube:player_client=android,web,mweb,ios;player_skip=webpage",
+    "--add-header",
+    "Referer: https://www.youtube.com/",
+    "--add-header",
+    "Origin: https://www.youtube.com/",
+    "--force-ipv4",
+    ...getProxyArgs(),
+    "--dump-single-json",
+    "--flat-playlist",
+    "--no-warnings",
+    "--no-check-certificates",
+    cleanUrl,
+  ];
+
+  let stdout;
+  try {
+    const res = await execFileAsync(ytDlpBinary, [...cookieArgs, ...baseArgs], {
+      maxBuffer: 15 * 1024 * 1024,
+      timeout: YTDLP_EXTRACT_TIMEOUT_MS,
+    });
+    stdout = res.stdout;
+  } catch (cookieErr) {
+    if (cookieArgs.length > 0) {
+      console.warn(
+        "[YouTube Auth] Extraction with cookies failed (likely datacenter account checkpoint). Retrying automatically WITHOUT cookies..."
+      );
+      const res = await execFileAsync(ytDlpBinary, baseArgs, {
+        maxBuffer: 15 * 1024 * 1024,
+        timeout: YTDLP_EXTRACT_TIMEOUT_MS,
+      });
+      stdout = res.stdout;
+    } else {
+      throw cookieErr;
+    }
+  }
+
+  const data = JSON.parse(stdout);
+  const isPlaylist = data._type === "playlist" || Array.isArray(data.entries);
+  let tracks = [];
+
+  if (isPlaylist && Array.isArray(data.entries)) {
+    tracks = data.entries
+      .filter((entry) => entry && (entry.id || entry.url))
+      .map((entry) => {
+        const videoId = entry.id;
+        const trackUrl =
+          entry.url && entry.url.startsWith("http")
+            ? entry.url
+            : `https://www.youtube.com/watch?v=${videoId}`;
+
+        return {
+          id: videoId,
+          title: entry.title || "Untitled Video",
+          duration: typeof entry.duration === "number" ? entry.duration : undefined,
+          url: trackUrl,
+          thumbnail:
+            entry.thumbnails && entry.thumbnails.length > 0
+              ? entry.thumbnails[entry.thumbnails.length - 1].url
+              : `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+          author: entry.uploader || entry.channel || undefined,
+        };
+      });
+  } else {
+    const videoId = data.id || extractVideoId(cleanUrl);
+    const trackUrl =
+      data.webpage_url || `https://www.youtube.com/watch?v=${videoId}`;
+    const bestThumbnail =
+      data.thumbnail ||
+      (data.thumbnails && data.thumbnails.length > 0
+        ? data.thumbnails[data.thumbnails.length - 1].url
+        : `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
+
+    tracks = [
+      {
+        id: videoId,
+        title: data.title || "Untitled Track",
+        duration: typeof data.duration === "number" ? data.duration : undefined,
+        url: trackUrl,
+        thumbnail: bestThumbnail,
+        author: data.uploader || data.channel || undefined,
+      },
+    ];
+  }
+
+  return {
+    isPlaylist,
+    title: data.title || (isPlaylist ? "YouTube Playlist" : "YouTube Video"),
+    thumbnail: tracks.length > 0 && tracks[0].thumbnail ? tracks[0].thumbnail : undefined,
+    tracks,
+  };
+}
+
+/**
+ * Spawns yt-dlp to stream audio directly into the Express response stream.
+ */
+function streamDirect(cleanUrl, req, res) {
+  const ytDlpBinary = getYtDlpPath();
+  const cookieArgs = getCookieArgs();
+
+  const getArgs = (withCookies, client = "android,web,mweb,ios") => [
+    "--js-runtimes",
+    "deno",
+    "--remote-components",
+    "ejs:github",
+    "--extractor-args",
+    `youtube:player_client=${client};player_skip=webpage`,
+    "--add-header",
+    "Referer: https://www.youtube.com/",
+    "--add-header",
+    "Origin: https://www.youtube.com/",
+    "--force-ipv4",
+    ...getProxyArgs(),
+    ...(withCookies ? cookieArgs : []),
+    "-f",
+    "ba/b",
+    "-o",
+    "-",
+    "--no-playlist",
+    "--no-warnings",
+    "--no-check-certificates",
+    cleanUrl,
+  ];
+
+  const startStream = (useCookies, client = "android,web,mweb,ios") => {
+    const child = spawn(ytDlpBinary, getArgs(useCookies, client));
+
+    let hasSentHeaders = false;
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      if (!hasSentHeaders && !res.headersSent) {
+        res.setHeader("Content-Type", "audio/mp4");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        hasSentHeaders = true;
+      }
+      res.write(chunk);
+    });
+
+    child.stdout.on("end", () => {
+      if (hasSentHeaders || res.headersSent) {
+        res.end();
+      }
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr = (stderr + chunk.toString()).slice(-4000);
+    });
+
+    child.on("error", (err) => {
+      console.error("yt-dlp spawn error:", err);
+      if (!res.headersSent && !hasSentHeaders) {
+        res.status(500).json({ error: "Failed to spawn yt-dlp process." });
+      } else {
+        res.destroy();
+      }
+    });
+
+    child.on("close", (code) => {
+      if (code !== 0) {
+        console.error(
+          `yt-dlp stream failed (useCookies=${useCookies}, client=${client}) with code ${code}:`,
+          stderr
+        );
+        if (!res.headersSent && !hasSentHeaders) {
+          if (useCookies && cookieArgs.length > 0) {
+            console.warn("[YouTube Auth] Stream with cookies failed. Retrying WITHOUT cookies...");
+            startStream(false, client);
+            return;
+          }
+          let cleanErr =
+            stderr
+              .split("\n")
+              .map((l) => l.trim())
+              .filter((l) => l && !l.startsWith("Command failed:"))
+              .pop() || "yt-dlp stream exited with error.";
+
+          if (cleanErr.includes("HTTP Error 400") || cleanErr.includes("does not exist")) {
+            cleanErr = "This video or playlist does not exist or is unavailable.";
+          }
+          res.status(500).json({ error: cleanErr });
+        } else {
+          res.destroy();
+        }
+      }
+    });
+
+    req.on("close", () => {
+      child.kill("SIGKILL");
+    });
+  };
+
+  startStream(cookieArgs.length > 0);
+}
+
+module.exports = {
+  extractInfo,
+  streamDirect,
+};
