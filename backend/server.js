@@ -846,18 +846,5 @@ app.listen(PORT, "0.0.0.0", () => {
 
   // Fetch verified healthy Invidious instances on boot
   refreshInvidiousPool().catch(() => {});
-
-  // Background yt-dlp self-update on startup
-  try {
-    const ytDlpBinary = getYtDlpPath();
-    execFile(ytDlpBinary, ["-U"], (err, stdout, stderr) => {
-      if (err) {
-        console.warn("[yt-dlp auto-update check]:", err.message);
-      } else {
-        const out = (stdout || stderr || "").trim();
-        if (out) console.log("[yt-dlp auto-update]:", out);
-      }
-    });
-  } catch {}
 });
 
