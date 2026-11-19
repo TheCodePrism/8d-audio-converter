@@ -368,7 +368,7 @@ export default function AudioConverter() {
   }, []);
 
   // Core background queue runner hook: concurrency, WakeLock, audio decoding, 8D DSP & export
-  const { isWakeLocked } = useAudioQueue({
+  const { isWakeLocked, retryTrack, retryAllFailed } = useAudioQueue({
     audioFiles,
     setAudioFiles,
     options,
@@ -488,38 +488,12 @@ export default function AudioConverter() {
   // --- 4. Retry Mechanism ---
   const handleRetryTrack = (id: string) => {
     setError(null);
-    setAudioFiles((prev) =>
-      prev.map((f) =>
-        f.id === id
-          ? {
-              ...f,
-              status: "pending",
-              progress: 0,
-              retryCount: 0, // Reset retry count on manual user trigger
-              error: undefined,
-              errorDetails: undefined,
-            }
-          : f
-      )
-    );
+    retryTrack(id);
   };
 
   const handleRetryAllFailed = () => {
     setError(null);
-    setAudioFiles((prev) =>
-      prev.map((f) =>
-        f.status === "error"
-          ? {
-              ...f,
-              status: "pending",
-              progress: 0,
-              retryCount: 0, // Reset retry count on manual user trigger
-              error: undefined,
-              errorDetails: undefined,
-            }
-          : f
-      )
-    );
+    retryAllFailed();
   };
 
   // Re-convert an existing track with custom options

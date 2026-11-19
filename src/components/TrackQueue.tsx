@@ -23,7 +23,6 @@ import {
 import { AudioFileItem } from "@/types";
 import { getYouTubeUrl } from "./AudioConverter";
 
-const MAX_AUTO_RETRIES = 2;
 
 interface TrackQueueProps {
   audioFiles: AudioFileItem[];
@@ -267,15 +266,11 @@ export default function TrackQueue({
                         <span className="text-red-400 font-mono flex items-center gap-1.5 flex-wrap">
                           <AlertCircle className="w-3 h-3 shrink-0" />
                           <span>Failed</span>
-                          {(item.retryCount || 0) < MAX_AUTO_RETRIES ? (
-                            <span className="text-amber-300 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.2 rounded font-sans text-[10px]">
-                              Will retry after next success ({item.retryCount || 0}/{MAX_AUTO_RETRIES})
+                          {item.retryCount && item.retryCount > 0 ? (
+                            <span className="text-slate-400 font-sans text-[10px]">
+                              (Retried {item.retryCount}×)
                             </span>
-                          ) : (
-                            <span className="text-red-400/70 font-sans text-[10px]">
-                              (Click Retry)
-                            </span>
-                          )}
+                          ) : null}
                         </span>
                       )}
                     </div>
