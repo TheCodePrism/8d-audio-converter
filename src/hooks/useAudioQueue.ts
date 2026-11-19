@@ -21,7 +21,8 @@ export const SUPPORTED_FORMATS = [
   "audio/flac",
 ];
 
-const CONVERSION_TIMEOUT_MS = 55000; // 55 seconds timeout to prevent stalled conversions
+const STALL_TIMEOUT_MS = 45000; // Trigger timeout ONLY if stalled for 45s with zero progress
+const MAX_CONVERSION_DURATION_MS = 360000; // 6 minutes max safety cap for extra-long tracks
 
 interface UseAudioQueueParams {
   audioFiles: AudioFileItem[];
@@ -47,6 +48,7 @@ export function useAudioQueue({
   const activeConvertingIdsRef = useRef<Set<string>>(new Set());
   const activeRunIdsRef = useRef<Map<string, number>>(new Map());
   const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
+  const lastActivityPerTrackRef = useRef<Map<string, number>>(new Map());
 
   // Mobile Screen WakeLock: prevents mobile screens from turning off during batch conversion
   useEffect(() => {
@@ -102,6 +104,9 @@ export function useAudioQueue({
       if (runId !== undefined && activeRunIdsRef.current.get(id) !== runId) {
         return; // Stale run update
       }
+      // Touch activity timestamp for watchdog
+      lastActivityPerTrackRef.current.set(id, Date.now());
+
       setAudioFiles((prev) =>
         prev.map((f) =>
           f.id === id
@@ -151,16 +156,34 @@ export function useAudioQueue({
       );
 
       let audioContext: any = null;
-      let timeoutTimer: NodeJS.Timeout | null = null;
+      let watchdogTimer: NodeJS.Timeout | null = null;
 
       try {
         const timeoutPromise = new Promise<never>((_, reject) => {
-          timeoutTimer = setTimeout(() => {
-            abortController.abort();
-            reject(
-              new Error("Conversion timed out (stalled for >55s).")
-            );
-          }, CONVERSION_TIMEOUT_MS);
+          const startTime = Date.now();
+          lastActivityPerTrackRef.current.set(item.id, startTime);
+
+          watchdogTimer = setInterval(() => {
+            const now = Date.now();
+            const lastActivity = lastActivityPerTrackRef.current.get(item.id) || startTime;
+            const stallDuration = now - lastActivity;
+            const totalElapsed = now - startTime;
+
+            // Trigger ONLY if conversion has completely stalled (no progress for >45s)
+            if (stallDuration > STALL_TIMEOUT_MS) {
+              if (watchdogTimer) clearInterval(watchdogTimer);
+              abortController.abort();
+              reject(
+                new Error("Conversion stalled (no activity for >45s). Please retry.")
+              );
+            } else if (totalElapsed > MAX_CONVERSION_DURATION_MS) {
+              if (watchdogTimer) clearInterval(watchdogTimer);
+              abortController.abort();
+              reject(
+                new Error("Conversion exceeded maximum allowed duration (6 minutes).")
+              );
+            }
+          }, 2000);
         });
 
         const doConversion = async () => {
@@ -337,7 +360,8 @@ export function useAudioQueue({
           )
         );
       } finally {
-        if (timeoutTimer) clearTimeout(timeoutTimer);
+        if (watchdogTimer) clearInterval(watchdogTimer);
+        lastActivityPerTrackRef.current.delete(item.id);
         abortControllersRef.current.delete(item.id);
         if (audioContext && audioContext.state !== "closed") {
           try {
