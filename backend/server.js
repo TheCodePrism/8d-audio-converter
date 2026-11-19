@@ -13,15 +13,47 @@ const app = express();
 // These act as YouTube proxy servers, allowing us to bypass Render's datacenter
 // IP block. The /api/v1/videos/:id endpoint returns stream URLs, and
 // /videoplayback?... proxies the actual audio bytes through the instance.
-const INVIDIOUS_INSTANCES = [
+const DEFAULT_INVIDIOUS_INSTANCES = [
   "yt.chocolatemoo53.com",
-  "invidious.nerdvpn.de",
-  "inv.tux.pizza",
   "invidious.projectsegfau.lt",
-  "invidious.privacyredirect.com",
-  "iv.melmac.space",
-  "invidious.perennialte.ch",
+  "invidious.drgns.space",
+  "invidious.schenkl.is",
+  "invidious.f5.si",
+  "invidious.protokolla.fi",
+  "invidious.jing.rocks",
 ];
+
+let liveInvidiousInstances = [
+  ...(process.env.INVIDIOUS_INSTANCE ? [process.env.INVIDIOUS_INSTANCE.trim()] : []),
+  ...(process.env.INVIDIOUS_HOSTS
+    ? process.env.INVIDIOUS_HOSTS.split(",").map((s) => s.trim()).filter(Boolean)
+    : []),
+  ...DEFAULT_INVIDIOUS_INSTANCES,
+];
+
+async function refreshInvidiousPool() {
+  try {
+    const res = await fetch("https://api.invidious.io/instances.json?sort_by=health", {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const healthy = data
+        .filter(([host, meta]) => meta.type === "https" && meta.api === true && !meta.monitor?.down)
+        .map(([host]) => host);
+      if (healthy.length > 0) {
+        liveInvidiousInstances = Array.from(new Set([...healthy, ...liveInvidiousInstances]));
+        console.log(`[Invidious Pool] Live instances synced (${healthy.length} verified live API instances).`);
+      }
+    }
+  } catch (err) {
+    // Keep fallback list
+  }
+}
+
+// Refresh pool every 30 minutes
+setInterval(refreshInvidiousPool, 30 * 60 * 1000).unref();
 
 // ── Helper: extract YouTube video ID ─────────────────────────────────────────
 function extractVideoId(urlStr) {
@@ -42,7 +74,7 @@ function extractVideoId(urlStr) {
 // responds with valid audio format streams, immediately aborting the remaining ones.
 async function getInvidiousAudioInfo(videoId) {
   const controller = new AbortController();
-  const overallTimeout = setTimeout(() => controller.abort(), 7000);
+  const overallTimeout = setTimeout(() => controller.abort(), 12000);
 
   const fetchInstance = async (instance) => {
     const apiUrl = `https://${instance}/api/v1/videos/${videoId}`;
@@ -50,7 +82,10 @@ async function getInvidiousAudioInfo(videoId) {
     try {
       const apiRes = await fetch(apiUrl, {
         signal: controller.signal,
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; 8DAudioBot/1.0)" },
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        },
       });
       if (!apiRes.ok) {
         throw new Error(`${instance} returned HTTP ${apiRes.status} (${Date.now() - start}ms)`);
@@ -92,11 +127,10 @@ async function getInvidiousAudioInfo(videoId) {
     }
   };
 
+  const pool = liveInvidiousInstances.slice(0, 10);
   try {
-    console.log(`[Invidious] Racing ${INVIDIOUS_INSTANCES.length} instances in parallel for videoId=${videoId}...`);
-    const winner = await Promise.any(
-      INVIDIOUS_INSTANCES.map((instance) => fetchInstance(instance))
-    );
+    console.log(`[Invidious] Racing ${pool.length} instances in parallel for videoId=${videoId}...`);
+    const winner = await Promise.any(pool.map((instance) => fetchInstance(instance)));
     clearTimeout(overallTimeout);
     controller.abort(); // Cancel all slower in-flight requests immediately
 
@@ -250,6 +284,20 @@ function getCookieArgs() {
 
   return [];
 }
+
+function getProxyArgs() {
+  const proxy =
+    process.env.YT_PROXY ||
+    process.env.YOUTUBE_PROXY ||
+    process.env.HTTP_PROXY ||
+    process.env.HTTPS_PROXY ||
+    process.env.ALL_PROXY;
+  if (proxy && proxy.trim().length > 4) {
+    return ["--proxy", proxy.trim()];
+  }
+  return [];
+}
+
 function isValidYouTubeUrl(urlStr) {
   try {
     const parsed = new URL(urlStr);
@@ -321,10 +369,11 @@ app.get("/health", (_req, res) => {
     ytDlp: {
       binary: getYtDlpPath(),
       hasCookies: getCookieArgs().length > 0,
+      hasProxy: getProxyArgs().length > 0,
     },
     invidious: {
-      totalInstances: INVIDIOUS_INSTANCES.length,
-      instances: INVIDIOUS_INSTANCES,
+      totalInstances: liveInvidiousInstances.length,
+      instances: liveInvidiousInstances,
     },
   });
 });
@@ -491,12 +540,13 @@ app.post("/youtube/info", async (req, res) => {
       "--remote-components",
       "ejs:github",
       "--extractor-args",
-      "youtube:player_client=tv_samsung,visionos,android,web,default",
+      "youtube:player_client=android,web,mweb,ios;player_skip=webpage",
       "--add-header",
       "Referer: https://www.youtube.com/",
       "--add-header",
       "Origin: https://www.youtube.com/",
       "--force-ipv4",
+      ...getProxyArgs(),
       "--dump-single-json",
       "--flat-playlist",
       "--no-warnings",
@@ -686,18 +736,19 @@ app.get("/youtube/stream", async (req, res) => {
     const ytDlpBinary = getYtDlpPath();
     const cookieArgs = getCookieArgs();
 
-    const getArgs = (withCookies, client = "tv_samsung,visionos,android,web,default") => [
+    const getArgs = (withCookies, client = "android,web,mweb,ios") => [
       "--js-runtimes",
       "deno",
       "--remote-components",
       "ejs:github",
       "--extractor-args",
-      `youtube:player_client=${client}`,
+      `youtube:player_client=${client};player_skip=webpage`,
       "--add-header",
       "Referer: https://www.youtube.com/",
       "--add-header",
       "Origin: https://www.youtube.com/",
       "--force-ipv4",
+      ...getProxyArgs(),
       ...(withCookies ? cookieArgs : []),
       "-f",
       "ba/b",
@@ -709,7 +760,7 @@ app.get("/youtube/stream", async (req, res) => {
       cleanUrl,
     ];
 
-    const startStream = (useCookies, client = "tv_samsung,visionos,android,web,default") => {
+    const startStream = (useCookies, client = "android,web,mweb,ios") => {
       const child = spawn(ytDlpBinary, getArgs(useCookies, client));
 
       let hasSentHeaders = false;
@@ -788,6 +839,25 @@ app.get("/youtube/stream", async (req, res) => {
 // ── Start server ──────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`8D Audio backend running on port ${PORT}`);
+  console.log(`✓ 8D Audio backend running on port ${PORT}`);
+  console.log(`✓ yt-dlp binary: ${getYtDlpPath()}`);
+  console.log(`✓ Proxy configured: ${getProxyArgs().length > 0 ? "YES" : "NO"}`);
+  console.log(`✓ YouTube cookies: ${getCookieArgs().length > 0 ? "YES" : "NO"}`);
+
+  // Fetch verified healthy Invidious instances on boot
+  refreshInvidiousPool().catch(() => {});
+
+  // Background yt-dlp self-update on startup
+  try {
+    const ytDlpBinary = getYtDlpPath();
+    execFile(ytDlpBinary, ["-U"], (err, stdout, stderr) => {
+      if (err) {
+        console.warn("[yt-dlp auto-update check]:", err.message);
+      } else {
+        const out = (stdout || stderr || "").trim();
+        if (out) console.log("[yt-dlp auto-update]:", out);
+      }
+    });
+  } catch {}
 });
 
