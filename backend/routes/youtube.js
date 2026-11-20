@@ -48,8 +48,8 @@ router.post("/youtube/info", async (req, res) => {
       fullText.includes("Unable to download API page")
     ) {
       message = "This playlist does not exist, is private, or the link is incomplete. Please check the URL.";
-    } else if (fullText.includes("Video unavailable")) {
-      message = "This YouTube video is unavailable or private.";
+    } else if (fullText.includes("Video unavailable") || fullText.includes("Failed to extract any player response") || fullText.includes("This video is unavailable")) {
+      message = "This YouTube video is unavailable, deleted, or region-restricted.";
     } else if (fullText.includes("Sign in to confirm")) {
       message = "YouTube is requesting sign-in verification for this content.";
     } else if (error.code === "ENOENT") {

@@ -55,7 +55,7 @@ async function extractInfo(cleanUrl) {
     "--remote-components",
     "ejs:github",
     "--extractor-args",
-    "youtube:player_client=mweb,android,ios;player_skip=webpage",
+    "youtube:player_client=mweb,android,ios",
     "--add-header",
     "Referer: https://www.youtube.com/",
     "--add-header",
@@ -161,7 +161,7 @@ function streamDirect(cleanUrl, req, res) {
     "--remote-components",
     "ejs:github",
     "--extractor-args",
-    `youtube:player_client=${client};player_skip=webpage`,
+    `youtube:player_client=${client}`,
     "--add-header",
     "Referer: https://www.youtube.com/",
     "--add-header",
@@ -240,8 +240,8 @@ function streamDirect(cleanUrl, req, res) {
               .filter((l) => l && !l.startsWith("Command failed:"))
               .pop() || "yt-dlp stream exited with error.";
 
-          if (cleanErr.includes("HTTP Error 400") || cleanErr.includes("does not exist")) {
-            cleanErr = "This video or playlist does not exist or is unavailable.";
+          if (cleanErr.includes("HTTP Error 400") || cleanErr.includes("does not exist") || cleanErr.includes("Failed to extract any player response") || cleanErr.includes("This video is unavailable")) {
+            cleanErr = "This video is unavailable, deleted, or region-restricted on YouTube.";
           } else if (cleanErr.includes("Sign in to confirm you're not a bot")) {
             cleanErr = "YouTube anti-bot verification triggered. Try disabling YT_PROXY or updating cookies.";
           }
