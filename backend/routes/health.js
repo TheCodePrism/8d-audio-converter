@@ -177,4 +177,52 @@ router.post("/admin/probe", async (req, res) => {
   });
 });
 
+// ── Admin: Test Player Clients on Datacenter IP ──────────────────────────────
+router.post("/admin/test-clients", async (req, res) => {
+  const { url = "https://www.youtube.com/watch?v=KSAAO3MHL1k" } = req.body;
+  const cleanUrl = cleanYouTubeUrl(url);
+  const ytDlpBinary = getYtDlpPath();
+  const clientsToTest = ["tv", "web_creator", "android_creator", "web_safari", "android_vr", "mweb", "ios", "android"];
+  const results = {};
+
+  for (const client of clientsToTest) {
+    const start = Date.now();
+    try {
+      const testArgs = [
+        "--js-runtimes",
+        "deno",
+        "--remote-components",
+        "ejs:github",
+        "--geo-bypass",
+        "--geo-bypass-country",
+        "IN",
+        "--extractor-args",
+        `youtube:player_client=${client}`,
+        "-f",
+        "ba/b",
+        "-g",
+        "--force-ipv4",
+        "--no-playlist",
+        cleanUrl,
+      ];
+      const { stdout } = await execFileAsync(ytDlpBinary, testArgs, { timeout: 12000 });
+      const streamUrl = stdout.trim().split("\n")[0];
+      results[client] = {
+        success: true,
+        elapsed: Date.now() - start,
+        hasUrl: !!streamUrl,
+        urlPrefix: streamUrl ? streamUrl.slice(0, 80) : null,
+      };
+    } catch (err) {
+      results[client] = {
+        success: false,
+        elapsed: Date.now() - start,
+        error: (err.stderr || err.message || "").trim().split("\n").pop(),
+      };
+    }
+  }
+
+  res.json({ url: cleanUrl, results });
+});
+
 module.exports = router;
