@@ -57,8 +57,6 @@ async function extractInfo(cleanUrl) {
     "--geo-bypass",
     "--geo-bypass-country",
     "IN",
-    "--extractor-args",
-    "youtube:player_client=mweb,android,ios",
     "--add-header",
     "Referer: https://www.youtube.com/",
     "--add-header",
@@ -158,7 +156,7 @@ function streamDirect(cleanUrl, req, res) {
   const cookieArgs = getCookieArgs();
   const proxyArgs = getProxyArgs();
 
-  const getArgs = (withCookies, withProxy = true, client = "mweb,android,ios") => [
+  const getArgs = (withCookies, withProxy = true, client = null) => [
     "--js-runtimes",
     "deno",
     "--remote-components",
@@ -166,8 +164,7 @@ function streamDirect(cleanUrl, req, res) {
     "--geo-bypass",
     "--geo-bypass-country",
     "IN",
-    "--extractor-args",
-    `youtube:player_client=${client}`,
+    ...(client ? ["--extractor-args", `youtube:player_client=${client}`] : []),
     "--add-header",
     "Referer: https://www.youtube.com/",
     "--add-header",
@@ -185,7 +182,7 @@ function streamDirect(cleanUrl, req, res) {
     cleanUrl,
   ];
 
-  const startStream = (useCookies, useProxy = true, client = "mweb,android,ios") => {
+  const startStream = (useCookies, useProxy = true, client = null) => {
     const child = spawn(ytDlpBinary, getArgs(useCookies, useProxy, client));
 
     let hasSentHeaders = false;
@@ -239,6 +236,12 @@ function streamDirect(cleanUrl, req, res) {
             startStream(false, false, client);
             return;
           }
+          // If default client failed on bot challenge or player response, try TV embedded client
+          if (client === null && (stderr.includes("Sign in to confirm") || stderr.includes("player response"))) {
+            console.warn("[YouTube Client] Default player client restricted. Retrying with tv_embedded client...");
+            startStream(false, false, "tv_embedded,web_safari");
+            return;
+          }
           let cleanErr =
             stderr
               .split("\n")
@@ -246,9 +249,14 @@ function streamDirect(cleanUrl, req, res) {
               .filter((l) => l && !l.startsWith("Command failed:"))
               .pop() || "yt-dlp stream exited with error.";
 
-          if (cleanErr.includes("HTTP Error 400") || cleanErr.includes("does not exist") || cleanErr.includes("Failed to extract any player response") || cleanErr.includes("This video is unavailable")) {
+          if (
+            cleanErr.includes("HTTP Error 400") ||
+            cleanErr.includes("does not exist") ||
+            cleanErr.includes("Failed to extract any player response") ||
+            cleanErr.includes("This video is unavailable")
+          ) {
             cleanErr = "This video is unavailable, deleted, or region-restricted on YouTube.";
-          } else if (cleanErr.includes("Sign in to confirm you're not a bot")) {
+          } else if (cleanErr.includes("Sign in to confirm")) {
             cleanErr = "YouTube anti-bot verification triggered. Try disabling YT_PROXY or updating cookies.";
           }
           res.status(500).json({ error: cleanErr });
@@ -263,7 +271,7 @@ function streamDirect(cleanUrl, req, res) {
     });
   };
 
-  startStream(cookieArgs.length > 0, proxyArgs.length > 0);
+  startStream(cookieArgs.length > 0, proxyArgs.length > 0, null);
 }
 
 module.exports = {

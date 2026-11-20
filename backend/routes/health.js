@@ -3,6 +3,10 @@ const { getYtDlpPath } = require("../utils/binaries");
 const { getCookieArgs, getProxyArgs } = require("../utils/auth");
 const { isValidYouTubeUrl, cleanYouTubeUrl, extractVideoId } = require("../utils/youtube");
 const { getLiveInstances } = require("../services/invidious");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
+
+const execFileAsync = promisify(execFile);
 
 const router = express.Router();
 
@@ -123,11 +127,52 @@ router.post("/admin/probe", async (req, res) => {
     }
   }
 
+  // ── yt-dlp Probe ───────────────────────────────────────────────────────────
+  let ytdlpResult = null;
+  const ytStart = Date.now();
+  try {
+    const ytDlpBinary = getYtDlpPath();
+    const testArgs = [
+      "--js-runtimes",
+      "deno",
+      "--remote-components",
+      "ejs:github",
+      "--geo-bypass",
+      "--geo-bypass-country",
+      "IN",
+      "-f",
+      "ba/b",
+      "-g",
+      "--force-ipv4",
+      "--no-playlist",
+      "--no-warnings",
+      cleanUrl,
+    ];
+    logs.push(`[${new Date().toISOString()}] Running yt-dlp test extraction...`);
+    const { stdout, stderr } = await execFileAsync(ytDlpBinary, testArgs, { timeout: 15000 });
+    const streamUrl = stdout.trim().split("\n")[0];
+    ytdlpResult = {
+      success: true,
+      elapsed: Date.now() - ytStart,
+      hasStreamUrl: !!streamUrl,
+      previewUrl: streamUrl ? streamUrl.slice(0, 100) + "..." : null,
+    };
+    logs.push(`[${new Date().toISOString()}] ✓ yt-dlp succeeded in ${ytdlpResult.elapsed}ms`);
+  } catch (ytErr) {
+    ytdlpResult = {
+      success: false,
+      elapsed: Date.now() - ytStart,
+      error: ytErr.stderr || ytErr.message,
+    };
+    logs.push(`[${new Date().toISOString()}] ✕ yt-dlp failed in ${ytdlpResult.elapsed}ms: ${(ytErr.stderr || ytErr.message).slice(0, 200)}`);
+  }
+
   return res.json({
-    success: !!invidiousResult,
+    success: !!invidiousResult || (ytdlpResult && ytdlpResult.success),
     videoId,
     totalTimeMs: Date.now() - startTime,
     invidiousResult,
+    ytdlpResult,
     logs,
   });
 });
