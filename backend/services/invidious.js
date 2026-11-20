@@ -62,6 +62,10 @@ async function getInvidiousAudioInfo(videoId) {
       if (!apiRes.ok) {
         throw new Error(`${instance} returned HTTP ${apiRes.status} (${Date.now() - start}ms)`);
       }
+      const resContentType = apiRes.headers.get("content-type") || "";
+      if (!resContentType.includes("json")) {
+        throw new Error(`${instance} returned non-JSON response (${resContentType})`);
+      }
       const data = await apiRes.json();
       if (data.error) {
         throw new Error(`${instance} returned error: ${data.error} (${Date.now() - start}ms)`);

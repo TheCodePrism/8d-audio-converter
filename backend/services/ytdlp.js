@@ -55,7 +55,7 @@ async function extractInfo(cleanUrl) {
     "--remote-components",
     "ejs:github",
     "--extractor-args",
-    "youtube:player_client=android,web,mweb,ios;player_skip=webpage",
+    "youtube:player_client=mweb,android,ios;player_skip=webpage",
     "--add-header",
     "Referer: https://www.youtube.com/",
     "--add-header",
@@ -153,8 +153,9 @@ async function extractInfo(cleanUrl) {
 function streamDirect(cleanUrl, req, res) {
   const ytDlpBinary = getYtDlpPath();
   const cookieArgs = getCookieArgs();
+  const proxyArgs = getProxyArgs();
 
-  const getArgs = (withCookies, client = "android,web,mweb,ios") => [
+  const getArgs = (withCookies, withProxy = true, client = "mweb,android,ios") => [
     "--js-runtimes",
     "deno",
     "--remote-components",
@@ -166,7 +167,7 @@ function streamDirect(cleanUrl, req, res) {
     "--add-header",
     "Origin: https://www.youtube.com/",
     "--force-ipv4",
-    ...getProxyArgs(),
+    ...(withProxy ? proxyArgs : []),
     ...(withCookies ? cookieArgs : []),
     "-f",
     "ba/b",
@@ -178,8 +179,8 @@ function streamDirect(cleanUrl, req, res) {
     cleanUrl,
   ];
 
-  const startStream = (useCookies, client = "android,web,mweb,ios") => {
-    const child = spawn(ytDlpBinary, getArgs(useCookies, client));
+  const startStream = (useCookies, useProxy = true, client = "mweb,android,ios") => {
+    const child = spawn(ytDlpBinary, getArgs(useCookies, useProxy, client));
 
     let hasSentHeaders = false;
     let stderr = "";
@@ -216,13 +217,20 @@ function streamDirect(cleanUrl, req, res) {
     child.on("close", (code) => {
       if (code !== 0) {
         console.error(
-          `yt-dlp stream failed (useCookies=${useCookies}, client=${client}) with code ${code}:`,
+          `yt-dlp stream failed (useCookies=${useCookies}, useProxy=${useProxy}, client=${client}) with code ${code}:`,
           stderr
         );
         if (!res.headersSent && !hasSentHeaders) {
+          // If cookies failed (login checkpoint), retry without cookies
           if (useCookies && cookieArgs.length > 0) {
             console.warn("[YouTube Auth] Stream with cookies failed. Retrying WITHOUT cookies...");
-            startStream(false, client);
+            startStream(false, useProxy, client);
+            return;
+          }
+          // If proxy failed or caused bot checkpoint, retry directly without proxy
+          if (useProxy && proxyArgs.length > 0) {
+            console.warn("[YouTube Proxy] Stream through proxy failed or blocked. Retrying WITHOUT proxy...");
+            startStream(false, false, client);
             return;
           }
           let cleanErr =
@@ -234,6 +242,8 @@ function streamDirect(cleanUrl, req, res) {
 
           if (cleanErr.includes("HTTP Error 400") || cleanErr.includes("does not exist")) {
             cleanErr = "This video or playlist does not exist or is unavailable.";
+          } else if (cleanErr.includes("Sign in to confirm you're not a bot")) {
+            cleanErr = "YouTube anti-bot verification triggered. Try disabling YT_PROXY or updating cookies.";
           }
           res.status(500).json({ error: cleanErr });
         } else {
@@ -247,7 +257,7 @@ function streamDirect(cleanUrl, req, res) {
     });
   };
 
-  startStream(cookieArgs.length > 0);
+  startStream(cookieArgs.length > 0, proxyArgs.length > 0);
 }
 
 module.exports = {
