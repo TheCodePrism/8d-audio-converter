@@ -236,12 +236,6 @@ function streamDirect(cleanUrl, req, res) {
             startStream(false, false, client);
             return;
           }
-          // If default client failed on bot challenge or player response, try TV embedded client
-          if (client === null && (stderr.includes("Sign in to confirm") || stderr.includes("player response"))) {
-            console.warn("[YouTube Client] Default player client restricted. Retrying with tv_embedded client...");
-            startStream(false, false, "tv_embedded,web_safari");
-            return;
-          }
           let cleanErr =
             stderr
               .split("\n")
@@ -257,7 +251,7 @@ function streamDirect(cleanUrl, req, res) {
           ) {
             cleanErr = "This video is unavailable, deleted, or region-restricted on YouTube.";
           } else if (cleanErr.includes("Sign in to confirm")) {
-            cleanErr = "YouTube anti-bot verification triggered. Try disabling YT_PROXY or updating cookies.";
+            cleanErr = "YouTube anti-bot verification triggered on cloud server. Please upload this track via the 'Upload Files' tab.";
           }
           res.status(500).json({ error: cleanErr });
         } else {
