@@ -78,7 +78,14 @@ async function extractInfo(cleanUrl) {
     });
     stdout = res.stdout;
   } catch (cookieErr) {
-    if (cookieArgs.length > 0) {
+    const errText = cookieErr.stderr || cookieErr.message || "";
+    const isDeletedOrMissing =
+      errText.includes("This video is unavailable") ||
+      errText.includes("Video unavailable") ||
+      errText.includes("The playlist does not exist") ||
+      errText.includes("HTTP Error 404");
+
+    if (cookieArgs.length > 0 && !isDeletedOrMissing && errText.includes("Sign in to confirm")) {
       console.warn(
         "[YouTube Auth] Extraction with cookies failed (likely datacenter account checkpoint). Retrying automatically WITHOUT cookies..."
       );
@@ -224,9 +231,15 @@ function streamDirect(cleanUrl, req, res) {
           stderr
         );
         if (!res.headersSent && !hasSentHeaders) {
-          // If cookies failed (login checkpoint), retry without cookies
-          if (useCookies && cookieArgs.length > 0) {
-            console.warn("[YouTube Auth] Stream with cookies failed. Retrying WITHOUT cookies...");
+          const isDeletedOrMissing =
+            stderr.includes("This video is unavailable") ||
+            stderr.includes("Video unavailable") ||
+            stderr.includes("does not exist") ||
+            stderr.includes("HTTP Error 404");
+
+          // Only retry without cookies if cookies caused a login block on an existing video
+          if (useCookies && cookieArgs.length > 0 && !isDeletedOrMissing && stderr.includes("Sign in to confirm")) {
+            console.warn("[YouTube Auth] Stream with cookies failed login check. Retrying WITHOUT cookies...");
             startStream(false, useProxy, client);
             return;
           }
@@ -247,7 +260,9 @@ function streamDirect(cleanUrl, req, res) {
             cleanErr.includes("HTTP Error 400") ||
             cleanErr.includes("does not exist") ||
             cleanErr.includes("Failed to extract any player response") ||
-            cleanErr.includes("This video is unavailable")
+            cleanErr.includes("This video is unavailable") ||
+            cleanErr.includes("Video unavailable") ||
+            isDeletedOrMissing
           ) {
             cleanErr = "This video is unavailable, deleted, or region-restricted on YouTube.";
           } else if (cleanErr.includes("Sign in to confirm")) {

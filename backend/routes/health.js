@@ -140,6 +140,7 @@ router.post("/admin/probe", async (req, res) => {
       "--geo-bypass",
       "--geo-bypass-country",
       "IN",
+      ...getCookieArgs(),
       "-f",
       "ba/b",
       "-g",

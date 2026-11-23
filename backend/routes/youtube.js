@@ -80,8 +80,9 @@ router.get("/youtube/stream", async (req, res) => {
   const cleanUrl = cleanYouTubeUrl(videoUrl);
   const videoId = extractVideoId(cleanUrl);
 
-  // ── Primary: Invidious proxy (bypasses Render datacenter IP block) ───────────
-  if (videoId) {
+  // ── Primary: Invidious proxy (only when no authenticated cookies configured) ──
+  const hasCookies = require("../utils/auth").getCookieArgs().length > 0;
+  if (videoId && !hasCookies) {
     try {
       const audioInfo = await getInvidiousAudioInfo(videoId);
       if (audioInfo) {
