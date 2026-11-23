@@ -34,6 +34,7 @@ import {
   PRESETS,
   process8DAudio,
   audioBufferToMp3,
+  float32ToWav,
 } from "@/lib/audioProcessing";
 import {
   saveTrackToStorage,
@@ -145,6 +146,7 @@ export default function AudioConverter() {
 
   const createdUrlsRef = useRef<string[]>([]);
   const wavBlobsRef = useRef<Map<string, Blob>>(new Map());
+  const originalBlobsRef = useRef<Map<string, Blob>>(new Map());
   const packFileInputRef = useRef<HTMLInputElement>(null);
   const isHydratedRef = useRef<boolean>(false);
 
@@ -269,13 +271,22 @@ export default function AudioConverter() {
                 // Completed track: restore with cached MP3 blob
                 const audioUrl = registerUrl(URL.createObjectURL(saved.blob));
                 wavBlobsRef.current.set(item.id, saved.blob);
+
+                let originalUrl = "";
+                if (saved.originalBlob) {
+                  originalUrl = registerUrl(URL.createObjectURL(saved.originalBlob));
+                  originalBlobsRef.current.set(item.id, saved.originalBlob);
+                } else if (item.sourceUrl && (item.sourceUrl.includes("youtube.com") || item.sourceUrl.includes("youtu.be"))) {
+                  originalUrl = `/api/youtube/stream?url=${encodeURIComponent(item.sourceUrl)}`;
+                }
+
                 restored.push({
                   id: item.id,
                   name: item.name,
                   artist: item.artist || "8D Audio Master",
                   thumbnail: item.thumbnail,
                   size: saved.size,
-                  originalUrl: audioUrl,
+                  originalUrl: originalUrl || audioUrl,
                   convertedUrl: audioUrl,
                   status: "complete",
                   progress: 100,
@@ -312,13 +323,22 @@ export default function AudioConverter() {
             const restored: AudioFileItem[] = savedTracks.map((record) => {
               const audioUrl = registerUrl(URL.createObjectURL(record.blob));
               wavBlobsRef.current.set(record.id, record.blob);
+
+              let originalUrl = "";
+              if (record.originalBlob) {
+                originalUrl = registerUrl(URL.createObjectURL(record.originalBlob));
+                originalBlobsRef.current.set(record.id, record.originalBlob);
+              } else if (record.sourceUrl && (record.sourceUrl.includes("youtube.com") || record.sourceUrl.includes("youtu.be"))) {
+                originalUrl = `/api/youtube/stream?url=${encodeURIComponent(record.sourceUrl)}`;
+              }
+
               return {
                 id: record.id,
                 name: record.name,
                 artist: record.artist || "8D Audio Master",
                 thumbnail: record.thumbnail,
                 size: record.size,
-                originalUrl: audioUrl,
+                originalUrl: originalUrl || audioUrl,
                 convertedUrl: audioUrl,
                 status: "complete",
                 progress: 100,
@@ -375,6 +395,7 @@ export default function AudioConverter() {
     registerUrl,
     refreshSavedLibrary,
     wavBlobsRef,
+    originalBlobsRef,
   });
 
   // --- 1. Local File Upload Handler ---
@@ -625,13 +646,23 @@ export default function AudioConverter() {
 
   const handleLoadSavedTrack = (record: SavedTrackRecord) => {
     const audioUrl = registerUrl(URL.createObjectURL(record.blob));
+    wavBlobsRef.current.set(record.id, record.blob);
+
+    let originalUrl = "";
+    if (record.originalBlob) {
+      originalUrl = registerUrl(URL.createObjectURL(record.originalBlob));
+      originalBlobsRef.current.set(record.id, record.originalBlob);
+    } else if (record.sourceUrl && (record.sourceUrl.includes("youtube.com") || record.sourceUrl.includes("youtu.be"))) {
+      originalUrl = `/api/youtube/stream?url=${encodeURIComponent(record.sourceUrl)}`;
+    }
+
     const newItem: AudioFileItem = {
       id: `saved-${record.id}-${Date.now()}`,
       name: record.name,
       artist: record.artist || "Saved 8D Master",
       thumbnail: record.thumbnail,
       size: record.size,
-      originalUrl: audioUrl,
+      originalUrl: originalUrl || audioUrl,
       convertedUrl: audioUrl,
       status: "complete",
       progress: 100,
@@ -639,7 +670,6 @@ export default function AudioConverter() {
       sourceUrl: record.sourceUrl,
       addedAt: record.savedAt,
     };
-    wavBlobsRef.current.set(newItem.id, record.blob);
 
     setAudioFiles((prev) => {
       const updated = [...prev, newItem];
@@ -830,7 +860,17 @@ export default function AudioConverter() {
             {activeTrack ? (
               <AudioPlayer
                 src={activeTrack.convertedUrl || activeTrack.originalUrl}
-                originalSrc={activeTrack.originalUrl}
+                originalSrc={
+                  activeTrack.originalUrl && activeTrack.originalUrl !== activeTrack.convertedUrl
+                    ? activeTrack.originalUrl
+                    : originalBlobsRef.current.get(activeTrack.id)
+                    ? registerUrl(URL.createObjectURL(originalBlobsRef.current.get(activeTrack.id)!))
+                    : activeTrack.sourceUrl && (activeTrack.sourceUrl.includes("youtube.com") || activeTrack.sourceUrl.includes("youtu.be"))
+                    ? `/api/youtube/stream?url=${encodeURIComponent(activeTrack.sourceUrl)}`
+                    : activeTrack.rawBuffer
+                    ? registerUrl(URL.createObjectURL(float32ToWav(activeTrack.rawBuffer)))
+                    : undefined
+                }
                 title={activeTrack.name}
                 artist={activeTrack.artist || "8D Audio Master"}
                 thumbnail={activeTrack.thumbnail}

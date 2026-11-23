@@ -13,6 +13,7 @@ export interface SavedTrackRecord {
   thumbnail?: string;
   size: number;
   blob: Blob;
+  originalBlob?: Blob;
   savedAt: number;
   options?: AudioProcessingOptions;
   sourceType?: "upload" | "youtube" | "demo";
@@ -43,7 +44,8 @@ function openDB(): Promise<IDBDatabase> {
 
 export async function saveTrackToStorage(
   item: AudioFileItem,
-  audioBlob: Blob
+  audioBlob: Blob,
+  originalBlob?: Blob
 ): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
@@ -57,6 +59,7 @@ export async function saveTrackToStorage(
       thumbnail: item.thumbnail,
       size: audioBlob.size,
       blob: audioBlob,
+      originalBlob: originalBlob,
       savedAt: Date.now(),
       sourceType: item.sourceType,
       sourceUrl: item.sourceUrl,

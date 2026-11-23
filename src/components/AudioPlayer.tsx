@@ -507,7 +507,7 @@ export default function AudioPlayer({
           )}
 
           {/* Live A/B Comparison Pill */}
-          {originalSrc && is8DReady && (
+          {is8DReady && (
             <button
               type="button"
               onClick={() =>
@@ -518,11 +518,23 @@ export default function AudioPlayer({
                   ? "bg-cyan-500/20 border-cyan-400/80 text-cyan-200 shadow-cyan-500/15"
                   : "bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200"
               }`}
-              title="Toggle between 8D Spatial Audio and Original Stereo Audio"
+              title={
+                originalSrc && originalSrc !== src
+                  ? "Toggle between 8D Spatial Audio and Original Stereo Audio"
+                  : "Toggle between 8D Spatial Audio and Stereo Bypass"
+              }
             >
               <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="hidden sm:inline">{playbackMode === "8d" ? "8D SPATIAL" : "BYPASS STEREO"}</span>
-              <span className="sm:hidden font-bold">{playbackMode === "8d" ? "8D" : "STEREO"}</span>
+              <span className="hidden sm:inline">
+                {playbackMode === "8d"
+                  ? "8D SPATIAL"
+                  : originalSrc && originalSrc !== src
+                  ? "ORIGINAL STEREO"
+                  : "BYPASS STEREO"}
+              </span>
+              <span className="sm:hidden font-bold">
+                {playbackMode === "8d" ? "8D" : "STEREO"}
+              </span>
             </button>
           )}
 

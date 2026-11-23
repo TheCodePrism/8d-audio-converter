@@ -31,6 +31,7 @@ interface UseAudioQueueParams {
   registerUrl: (url: string) => string;
   refreshSavedLibrary: () => Promise<SavedTrackRecord[]>;
   wavBlobsRef: React.MutableRefObject<Map<string, Blob>>;
+  originalBlobsRef?: React.MutableRefObject<Map<string, Blob>>;
 }
 
 export function useAudioQueue({
@@ -40,6 +41,7 @@ export function useAudioQueue({
   registerUrl,
   refreshSavedLibrary,
   wavBlobsRef,
+  originalBlobsRef,
 }: UseAudioQueueParams) {
   const [isWakeLocked, setIsWakeLocked] = useState<boolean>(false);
   const wakeLockRef = useRef<any>(null);
@@ -189,12 +191,14 @@ export function useAudioQueue({
         const doConversion = async () => {
           let decodedBuffer: AudioBuffer;
           let originalUrl = item.originalUrl;
+          let originalBlob: Blob | undefined;
 
           if (item.sourceType === "upload" && item.file) {
             updateItemProgress(item.id, 20, "Reading local audio file...", runId);
             const validationError = validateFile(item.file);
             if (validationError) throw new Error(validationError);
 
+            originalBlob = item.file;
             const arrayBuffer = await item.file.arrayBuffer();
             if (activeRunIdsRef.current.get(item.id) !== runId) return;
 
@@ -242,6 +246,7 @@ export function useAudioQueue({
             updateItemProgress(item.id, 40, "Downloading audio stream chunks...", runId);
             const contentType = streamRes.headers.get("content-type") || "";
             const audioBlob = await streamRes.blob();
+            originalBlob = audioBlob;
 
             if (activeRunIdsRef.current.get(item.id) !== runId) return;
 
@@ -285,6 +290,7 @@ export function useAudioQueue({
             updateItemProgress(item.id, 40, "Synthesizing demo audio...", runId);
             decodedBuffer = generateDemoAudioBuffer(44100, 16);
             const rawWavBlob = float32ToWav(decodedBuffer);
+            originalBlob = rawWavBlob;
             originalUrl = registerUrl(URL.createObjectURL(rawWavBlob));
           } else {
             throw new Error("Unknown source type for conversion.");
@@ -313,9 +319,12 @@ export function useAudioQueue({
 
           const convertedUrl = registerUrl(URL.createObjectURL(wavBlob));
           wavBlobsRef.current.set(item.id, wavBlob);
+          if (originalBlob && originalBlobsRef) {
+            originalBlobsRef.current.set(item.id, originalBlob);
+          }
 
           // Auto-save to persistent browser storage
-          saveTrackToStorage(item, wavBlob)
+          saveTrackToStorage(item, wavBlob, originalBlob)
             .then(() => refreshSavedLibrary())
             .catch((e) => console.warn("Auto-save to storage failed:", e));
 
