@@ -226,4 +226,34 @@ router.post("/admin/test-clients", async (req, res) => {
   res.json({ url: cleanUrl, results });
 });
 
+// ── Admin: Raw Exec Debugger ─────────────────────────────────────────────────
+router.post("/admin/exec", async (req, res) => {
+  const { url = "https://www.youtube.com/watch?v=9Pm8M7Rbp-8", useCookies = true } = req.body;
+  const ytDlpBinary = getYtDlpPath();
+  const cookieArgs = useCookies ? getCookieArgs() : [];
+  const testArgs = [
+    "--js-runtimes",
+    "deno",
+    "--remote-components",
+    "ejs:github",
+    "--geo-bypass",
+    "--geo-bypass-country",
+    "IN",
+    ...cookieArgs,
+    "-f",
+    "ba/b",
+    "-g",
+    "--force-ipv4",
+    "--no-playlist",
+    url,
+  ];
+  const start = Date.now();
+  try {
+    const { stdout, stderr } = await execFileAsync(ytDlpBinary, testArgs, { timeout: 45000 });
+    res.json({ success: true, elapsed: Date.now() - start, stdout, stderr });
+  } catch (err) {
+    res.json({ success: false, elapsed: Date.now() - start, error: err.message, stdout: err.stdout, stderr: err.stderr });
+  }
+});
+
 module.exports = router;
