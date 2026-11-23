@@ -43,15 +43,29 @@ router.post("/youtube/info", async (req, res) => {
     const fullText = (error.stderr || error.message || "").trim();
 
     if (
+      fullText.includes("HTTP Error 429") ||
+      fullText.includes("Too Many Requests") ||
+      fullText.includes("rate-limit")
+    ) {
+      message = "YouTube cloud rate limit reached (HTTP 429). The cloud server IP is temporarily restricted by YouTube. Please run locally or upload the audio file directly.";
+    } else if (
       fullText.includes("HTTP Error 400") ||
       fullText.includes("The playlist does not exist") ||
       fullText.includes("Unable to download API page")
     ) {
       message = "This playlist does not exist, is private, or the link is incomplete. Please check the URL.";
-    } else if (fullText.includes("Video unavailable") || fullText.includes("Failed to extract any player response") || fullText.includes("This video is unavailable")) {
-      message = "This YouTube video is unavailable, deleted, or region-restricted.";
-    } else if (fullText.includes("Sign in to confirm")) {
-      message = "YouTube is requesting sign-in verification for this content.";
+    } else if (
+      fullText.includes("Sign in to confirm") ||
+      fullText.includes("bot verification")
+    ) {
+      message = "YouTube anti-bot verification triggered on cloud server. Please upload this track via 'Upload Files' or run locally.";
+    } else if (
+      fullText.includes("Video unavailable") ||
+      fullText.includes("This video is unavailable")
+    ) {
+      message = "This YouTube video is unavailable, deleted, or private.";
+    } else if (fullText.includes("Failed to extract any player response")) {
+      message = "YouTube blocked playback extraction on cloud server (HTTP 429/403). Please run locally or use 'Upload Files'.";
     } else if (error.code === "ENOENT") {
       message = "yt-dlp binary is not installed or not found on the server.";
     } else {
@@ -80,9 +94,8 @@ router.get("/youtube/stream", async (req, res) => {
   const cleanUrl = cleanYouTubeUrl(videoUrl);
   const videoId = extractVideoId(cleanUrl);
 
-  // ── Primary: Invidious proxy (only when no authenticated cookies configured) ──
-  const hasCookies = require("../utils/auth").getCookieArgs().length > 0;
-  if (videoId && !hasCookies) {
+  // ── Primary: Invidious proxy attempt ──
+  if (videoId) {
     try {
       const audioInfo = await getInvidiousAudioInfo(videoId);
       if (audioInfo) {

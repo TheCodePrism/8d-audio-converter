@@ -257,16 +257,30 @@ function streamDirect(cleanUrl, req, res) {
               .pop() || "yt-dlp stream exited with error.";
 
           if (
+            stderr.includes("HTTP Error 429") ||
+            stderr.includes("Too Many Requests") ||
+            cleanErr.includes("HTTP Error 429") ||
+            cleanErr.includes("Too Many Requests")
+          ) {
+            cleanErr = "YouTube cloud rate limit (HTTP 429). The cloud host IP is temporarily restricted by YouTube. Please run locally or use 'Upload Files'.";
+          } else if (
+            cleanErr.includes("Sign in to confirm") ||
+            stderr.includes("Sign in to confirm")
+          ) {
+            cleanErr = "YouTube anti-bot verification triggered on cloud server. Please upload this track via 'Upload Files' or run locally.";
+          } else if (
+            cleanErr.includes("Failed to extract any player response") ||
+            stderr.includes("Failed to extract any player response")
+          ) {
+            cleanErr = "YouTube blocked stream extraction on cloud server (HTTP 429/403). Please run locally or use 'Upload Files'.";
+          } else if (
             cleanErr.includes("HTTP Error 400") ||
             cleanErr.includes("does not exist") ||
-            cleanErr.includes("Failed to extract any player response") ||
             cleanErr.includes("This video is unavailable") ||
             cleanErr.includes("Video unavailable") ||
             isDeletedOrMissing
           ) {
             cleanErr = "This video is unavailable, deleted, or region-restricted on YouTube.";
-          } else if (cleanErr.includes("Sign in to confirm")) {
-            cleanErr = "YouTube anti-bot verification triggered on cloud server. Please upload this track via the 'Upload Files' tab.";
           }
           res.status(500).json({ error: cleanErr });
         } else {
