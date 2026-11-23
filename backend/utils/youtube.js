@@ -45,9 +45,8 @@ function extractPlaylistId(urlStr) {
 function isValidPlaylistId(listId) {
   if (!listId || typeof listId !== "string") return false;
   const trimmed = listId.trim();
-  // Valid YouTube playlist IDs are usually 34 chars (PL...), or 24-42 chars (RD..., OLAK5uy_..., etc.)
-  // Anything under 16 characters is truncated or incomplete.
-  return trimmed.length >= 16;
+  // Valid YouTube playlist IDs can be 2 chars (WL, LL), 12 chars (legacy/custom), or 34+ chars
+  return trimmed.length >= 2 && /^[a-zA-Z0-9_-]+$/.test(trimmed);
 }
 
 function cleanYouTubeUrl(urlStr) {

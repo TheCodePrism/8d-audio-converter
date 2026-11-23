@@ -29,7 +29,7 @@ router.post("/youtube/info", async (req, res) => {
   const videoId = extractVideoId(cleanUrl);
   if (listId && !videoId && !isValidPlaylistId(listId)) {
     return res.status(400).json({
-      error: `The playlist ID '${listId}' appears incomplete or cut off. Please paste the full playlist link from YouTube or YouTube Music.`,
+      error: `The playlist ID '${listId}' appears invalid. Please paste the full playlist link from YouTube or YouTube Music.`,
     });
   }
 

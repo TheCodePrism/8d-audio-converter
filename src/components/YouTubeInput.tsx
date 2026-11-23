@@ -62,14 +62,14 @@ export default function YouTubeInput({
     const targetUrl = url.trim();
     if (!targetUrl) return;
 
-    // Fast client-side sanity check: Detect truncated or cut-off playlist URLs
+    // Fast client-side sanity check: Detect empty playlist parameter
     if (targetUrl.includes("list=") && !targetUrl.includes("watch?v=")) {
       try {
         const u = new URL(targetUrl);
         const listParam = u.searchParams.get("list");
-        if (listParam && listParam.length < 16) {
+        if (!listParam || listParam.trim().length < 2) {
           setError(
-            `This playlist link appears incomplete or cut off ("${listParam}"). Standard YouTube playlist IDs are ~34 characters long. Please copy and paste the entire URL from YouTube or YouTube Music.`
+            "The playlist link is missing a valid playlist ID. Please copy and paste the entire URL from YouTube or YouTube Music."
           );
           return;
         }
