@@ -191,34 +191,53 @@ function AdminDashboard({ adminKey, onLogout }: { adminKey: string; onLogout: ()
     return unsub;
   }, []);
 
-  // Ping all Invidious instances
+  // Ping all Invidious instances — routed via server-side API to avoid CORS
   const pingInvidiousPool = async () => {
     const instances = backendData?.invidious?.instances || [
-      "inv.tux.pizza",
-      "invidious.drgns.space",
-      "invidious.asir.dev",
       "yewtu.be",
-      "invidious.lunar.icu",
-      "invidious.private.coffee",
+      "yt.chocolatemoo53.com",
+      "invidious.nerdvpn.de",
+      "inv.nadeko.net",
+      "inv.riverside.rocks",
+      "inv.in.projectsegfau.lt",
+      "invidious.protokolla.fi",
+      "invidious.slipfox.xyz",
+      "invidious.weblibre.org",
+      "inv.zzls.xyz",
+      "invidious.tiekoetter.com",
+      "invidious.projectsegfau.lt",
+      "invidious.io.lol",
     ];
 
     setIsPingingPool(true);
     const results: Record<string, { status: number; latency: number; ok: boolean }> = {};
 
-    await Promise.all(
-      instances.map(async (inst) => {
-        const start = Date.now();
-        try {
-          const res = await fetch(`https://${inst}/api/v1/videos/CKVr4PejT3s`, {
-            signal: AbortSignal.timeout(4500),
-          });
-          const elapsed = Date.now() - start;
-          results[inst] = { status: res.status, latency: elapsed, ok: res.ok };
-        } catch {
-          results[inst] = { status: 0, latency: Date.now() - start, ok: false };
+    try {
+      const res = await fetch("/api/admin/ping-instances", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-key": adminKey,
+        },
+        body: JSON.stringify({ instances }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        for (const item of data.results) {
+          results[item.instance] = {
+            status: item.status,
+            latency: item.latency,
+            ok: item.ok,
+          };
         }
-      })
-    );
+      }
+    } catch {
+      // Network error — mark all as failed
+      for (const inst of instances) {
+        results[inst] = { status: 0, latency: 0, ok: false };
+      }
+    }
 
     setInvidiousPings(results);
     setIsPingingPool(false);
@@ -542,7 +561,7 @@ function AdminDashboard({ adminKey, onLogout }: { adminKey: string; onLogout: ()
                 <Globe className="w-4 h-4 text-emerald-400" />
               </div>
               <div className="text-xl font-extrabold text-white">
-                {backendData?.invidious?.totalInstances || 12} Nodes
+                {backendData?.invidious?.totalInstances || 13} Nodes
               </div>
               <div className="text-[11px] text-slate-400 font-mono">
                 Cookies: {backendData?.ytDlp?.hasCookies ? "Active" : "None"} • Proxy:{" "}
@@ -578,7 +597,7 @@ function AdminDashboard({ adminKey, onLogout }: { adminKey: string; onLogout: ()
             <div>
               <h2 className="text-base font-bold text-white flex items-center gap-2">
                 <Globe className="w-5 h-5 text-cyan-400" />
-                Live Invidious Instance Pool ({backendData?.invidious?.instances?.length || 12} Instances)
+                Live Invidious Instance Pool ({backendData?.invidious?.instances?.length || 13} Instances)
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
                 Dynamic public instance cluster used to race audio metadata extraction in parallel.
@@ -597,18 +616,19 @@ function AdminDashboard({ adminKey, onLogout }: { adminKey: string; onLogout: ()
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {(
               backendData?.invidious?.instances || [
-                "inv.tux.pizza",
-                "invidious.drgns.space",
-                "invidious.asir.dev",
                 "yewtu.be",
-                "invidious.lunar.icu",
-                "invidious.private.coffee",
-                "invidious.jing.rocks",
-                "invidious.privacydev.net",
-                "iv.melmac.space",
                 "yt.chocolatemoo53.com",
                 "invidious.nerdvpn.de",
                 "inv.nadeko.net",
+                "inv.riverside.rocks",
+                "inv.in.projectsegfau.lt",
+                "invidious.protokolla.fi",
+                "invidious.slipfox.xyz",
+                "invidious.weblibre.org",
+                "inv.zzls.xyz",
+                "invidious.tiekoetter.com",
+                "invidious.projectsegfau.lt",
+                "invidious.io.lol",
               ]
             ).map((inst) => {
               const ping = invidiousPings[inst];
