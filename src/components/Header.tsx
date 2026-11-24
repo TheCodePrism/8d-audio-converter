@@ -1,13 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
-import { Headphones, Github, Sparkles, Radio, Activity } from "lucide-react";
+import { Github, Radio, Activity } from "lucide-react";
 import BrandLogo from "./BrandLogo";
 import { UserDiagnosticsModal } from "./UserDiagnosticsModal";
 
 export default function Header() {
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const handleOpen = () => setIsDiagnosticsOpen(true);
@@ -16,6 +22,7 @@ export default function Header() {
   }, []);
 
   return (
+    <>
     <header className="bg-slate-950/80 border-b border-slate-800/80 sticky top-0 z-40 backdrop-blur-xl">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
@@ -72,11 +79,17 @@ export default function Header() {
           </nav>
         </div>
       </div>
+    </header>
 
+    {/* Portal: render outside <header> so fixed positioning escapes
+        the header's stacking context (backdrop-blur + z-index) */}
+    {mounted && createPortal(
       <UserDiagnosticsModal
         isOpen={isDiagnosticsOpen}
         onClose={() => setIsDiagnosticsOpen(false)}
-      />
-    </header>
+      />,
+      document.body
+    )}
+    </>
   );
 }
