@@ -173,15 +173,24 @@ export default function TrackQueue({
               <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">{circuitBreakerNotice}</p>
             </div>
           </div>
-          {onResumeQueue && (
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={onResumeQueue}
-              className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold shrink-0 transition-all text-xs shadow-md shadow-amber-500/20 active:scale-95"
+              onClick={() => window.dispatchEvent(new CustomEvent("open-user-diagnostics"))}
+              className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold transition-all text-xs border border-slate-700"
             >
-              Resume Queue
+              View Logs
             </button>
-          )}
+            {onResumeQueue && (
+              <button
+                type="button"
+                onClick={onResumeQueue}
+                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold transition-all text-xs shadow-md shadow-amber-500/20 active:scale-95"
+              >
+                Resume Queue
+              </button>
+            )}
+          </div>
         </div>
       )}
 

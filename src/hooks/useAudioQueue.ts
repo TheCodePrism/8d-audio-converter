@@ -9,6 +9,7 @@ import {
   generateDemoAudioBuffer,
 } from "@/lib/audioProcessing";
 import { saveTrackToStorage, SavedTrackRecord } from "@/lib/storage";
+import { clientLogger } from "@/lib/clientLogger";
 
 export const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 export const SUPPORTED_FORMATS = [
@@ -256,7 +257,7 @@ export function useAudioQueue({
             let audioBlob: Blob;
             if (streamRes.body && typeof streamRes.body.getReader === "function") {
               const reader = streamRes.body.getReader();
-              const chunks: Uint8Array[] = [];
+              const chunks: any[] = [];
               let receivedBytes = 0;
               let lastReportTime = Date.now();
 
@@ -290,7 +291,7 @@ export function useAudioQueue({
                 }
               }
 
-              audioBlob = new Blob(chunks, { type: contentType || "audio/mp4" });
+              audioBlob = new Blob(chunks as any[], { type: contentType || "audio/mp4" });
             } else {
               audioBlob = await streamRes.blob();
             }
@@ -404,6 +405,7 @@ export function useAudioQueue({
 
           // Reset circuit-breaker counter on successful track completion
           consecutiveFailuresRef.current = 0;
+          clientLogger.success("Queue", `Track "${item.name}" converted successfully to 8D spatial audio.`);
 
           setAudioFiles((prev) =>
             prev.map((f) =>
@@ -434,14 +436,16 @@ export function useAudioQueue({
 
         console.error("Conversion error for track:", item.name, err);
         const msg = err?.message || "Audio conversion failed.";
+        clientLogger.error("Queue", `Conversion failed for track "${item.name}": ${msg}`);
 
         // Circuit breaker: track consecutive errors to prevent domino failures across huge queues
         consecutiveFailuresRef.current += 1;
         if (consecutiveFailuresRef.current >= 3) {
           setIsQueuePaused(true);
-          setCircuitBreakerNotice(
-            "Queue auto-paused: 3 tracks failed consecutively. The cloud streaming proxy may be busy. Click Resume Queue when ready, or try converting tracks individually."
-          );
+          const notice =
+            "Queue auto-paused: 3 tracks failed consecutively. The cloud streaming proxy may be busy. Click Resume Queue when ready, or try converting tracks individually.";
+          setCircuitBreakerNotice(notice);
+          clientLogger.warn("Queue", notice);
         }
 
         setAudioFiles((prev) =>
@@ -468,7 +472,7 @@ export function useAudioQueue({
         }
       }
     },
-    [options, registerUrl, updateItemProgress, refreshSavedLibrary, setAudioFiles, wavBlobsRef]
+    [options, registerUrl, updateItemProgress, refreshSavedLibrary, setAudioFiles, wavBlobsRef, originalBlobsRef]
   );
 
   // Background Parallel Queue Runner:

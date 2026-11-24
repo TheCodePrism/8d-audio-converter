@@ -1,15 +1,12 @@
-/* eslint-disable react-hooks/exhaustive-deps, react/no-unescaped-entities */
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import {
   Activity,
   Server,
   Cpu,
   Layers,
-  HelpCircle,
-  Play,
   RotateCw,
   CheckCircle2,
   AlertCircle,
@@ -25,7 +22,16 @@ import {
   ArrowRight,
   Database,
   RefreshCw,
+  Gauge,
+  Play,
+  Download,
+  Trash2,
+  Globe,
+  Sliders,
+  Check,
 } from "lucide-react";
+import { AdminGatekeeper } from "@/components/AdminGatekeeper";
+import { clientLogger, ClientLogEntry } from "@/lib/clientLogger";
 
 interface BackendHealth {
   status: string;
@@ -42,6 +48,7 @@ interface BackendHealth {
   ytDlp?: {
     binary: string;
     hasCookies: boolean;
+    hasProxy?: boolean;
   };
   invidious?: {
     totalInstances: number;
@@ -53,15 +60,6 @@ interface ProbeResult {
   success: boolean;
   videoId?: string;
   totalTimeMs?: number;
-  invidiousResult?: {
-    instance: string;
-    itag: string | number;
-    type: string;
-    title: string;
-    author: string;
-    duration: string | number;
-    proxyUrl: string;
-  };
   logs: string[];
   streamTest?: {
     status: number;
@@ -72,25 +70,45 @@ interface ProbeResult {
     duration?: number;
     error?: string;
   };
+  raw?: any;
 }
 
-export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState<
-    "diagnostics" | "architecture" | "backend" | "client-dsp" | "faq"
-  >("diagnostics");
+const BACKEND_OPTIONS = [
+  { id: "auto", label: "Auto (Configured Proxy /api/health)", url: "/api/health" },
+  { id: "render", label: "Render Cloud (eightd-audio-converter-5nii)", url: "https://eightd-audio-converter-5nii.onrender.com/health" },
+  { id: "local", label: "Local Node Server (localhost:3001)", url: "http://localhost:3001/health" },
+];
 
-  // YouTube Diagnostic state
+export default function AdminPage() {
+  return (
+    <AdminGatekeeper>
+      {({ adminKey, onLogout }) => <AdminDashboard adminKey={adminKey} onLogout={onLogout} />}
+    </AdminGatekeeper>
+  );
+}
+
+function AdminDashboard({ adminKey, onLogout }: { adminKey: string; onLogout: () => void }) {
+  const [activeTab, setActiveTab] = useState<
+    "infrastructure" | "invidious" | "youtube-lab" | "client-dsp" | "terminal"
+  >("infrastructure");
+
+  // Backend Health State
+  const [selectedBackend, setSelectedBackend] = useState<string>("auto");
+  const [backendStatus, setBackendStatus] = useState<string>("checking");
+  const [backendLatency, setBackendLatency] = useState<number | null>(null);
+  const [backendData, setBackendData] = useState<BackendHealth | null>(null);
+  const [isHealthRefreshing, setIsHealthRefreshing] = useState(false);
+
+  // Invidious Ping State
+  const [invidiousPings, setInvidiousPings] = useState<Record<string, { status: number; latency: number; ok: boolean }>>({});
+  const [isPingingPool, setIsPingingPool] = useState(false);
+
+  // YouTube Lab Probe State
   const [testUrl, setTestUrl] = useState("https://www.youtube.com/watch?v=CKVr4PejT3s");
   const [isProbing, setIsProbing] = useState(false);
   const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
 
-  // Backend Health state
-  const [backendStatus, setBackendStatus] = useState<string>("checking");
-  const [backendLatency, setBackendLatency] = useState<number | null>(null);
-  const [backendData, setBackendData] = useState<BackendHealth | null>(null);
-  const [selectedBackend, setSelectedBackend] = useState<string>("auto");
-
-  // Client Web Audio DSP state
+  // Client DSP & Storage State
   const [audioCtxDetails, setAudioCtxDetails] = useState<{
     state: string;
     sampleRate: number;
@@ -99,43 +117,46 @@ export default function AdminPage() {
     hrtfSupported: boolean;
     hardwareConcurrency: number;
   } | null>(null);
+  const [storageStats, setStorageStats] = useState<{ quotaMb: number; usageMb: number } | null>(null);
+  const [dspBenchSpeed, setDspBenchSpeed] = useState<number | null>(null);
+  const [isBenchmarking, setIsBenchmarking] = useState(false);
 
-  // Check Backend Health
-  const checkHealth = async () => {
+  // Terminal & Logs State
+  const [allLogs, setAllLogs] = useState<ClientLogEntry[]>([]);
+  const [logFilter, setLogFilter] = useState<string>("all");
+
+  // Fetch Health
+  const checkHealth = useCallback(async () => {
+    setIsHealthRefreshing(true);
     setBackendStatus("checking");
     const startTime = Date.now();
     try {
-      const url =
-        selectedBackend === "local"
-          ? "http://localhost:3001/health"
-          : selectedBackend === "render"
-          ? "https://8d-audio-backend.onrender.com/health"
-          : "/api/health";
-
-      const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+      const option = BACKEND_OPTIONS.find((b) => b.id === selectedBackend) || BACKEND_OPTIONS[0];
+      const res = await fetch(option.url, { signal: AbortSignal.timeout(6000) });
       const latency = Date.now() - startTime;
       setBackendLatency(latency);
 
       if (res.ok) {
         const data = await res.json();
-        // If fetched via Next.js proxy (/api/health), details is in data.details
-        const actualDetails = data.details || data;
-        setBackendData(actualDetails);
+        const actual = data.details || data;
+        setBackendData(actual);
         setBackendStatus("healthy");
       } else {
         setBackendStatus("error");
       }
-    } catch (err) {
+    } catch {
       setBackendLatency(Date.now() - startTime);
       setBackendStatus("unreachable");
+    } finally {
+      setIsHealthRefreshing(false);
     }
-  };
+  }, [selectedBackend]);
 
   useEffect(() => {
     checkHealth();
-  }, [selectedBackend]);
+  }, [checkHealth]);
 
-  // Inspect Client Web Audio
+  // Inspect Client Web Audio & Storage
   useEffect(() => {
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -153,9 +174,88 @@ export default function AdminPage() {
         ctx.close();
       }
     } catch (e) {
-      console.warn("Client Web Audio inspection error:", e);
+      console.warn("AudioContext inspection error:", e);
     }
+
+    if (navigator.storage && navigator.storage.estimate) {
+      navigator.storage.estimate().then((est) => {
+        setStorageStats({
+          quotaMb: Math.round((est.quota || 0) / (1024 * 1024)),
+          usageMb: Math.round((est.usage || 0) / (1024 * 1024)),
+        });
+      });
+    }
+
+    setAllLogs(clientLogger.getLogs());
+    const unsub = clientLogger.subscribe((updated) => setAllLogs(updated));
+    return unsub;
   }, []);
+
+  // Ping all Invidious instances
+  const pingInvidiousPool = async () => {
+    const instances = backendData?.invidious?.instances || [
+      "inv.tux.pizza",
+      "invidious.drgns.space",
+      "invidious.asir.dev",
+      "yewtu.be",
+      "invidious.lunar.icu",
+      "invidious.private.coffee",
+    ];
+
+    setIsPingingPool(true);
+    const results: Record<string, { status: number; latency: number; ok: boolean }> = {};
+
+    await Promise.all(
+      instances.map(async (inst) => {
+        const start = Date.now();
+        try {
+          const res = await fetch(`https://${inst}/api/v1/videos/CKVr4PejT3s`, {
+            signal: AbortSignal.timeout(4500),
+          });
+          const elapsed = Date.now() - start;
+          results[inst] = { status: res.status, latency: elapsed, ok: res.ok };
+        } catch {
+          results[inst] = { status: 0, latency: Date.now() - start, ok: false };
+        }
+      })
+    );
+
+    setInvidiousPings(results);
+    setIsPingingPool(false);
+  };
+
+  // Run Benchmark DSP speed
+  const runDspBenchmark = async () => {
+    setIsBenchmarking(true);
+    setDspBenchSpeed(null);
+    try {
+      const OfflineCtx = window.OfflineAudioContext || (window as any).webkitOfflineAudioContext;
+      if (!OfflineCtx) throw new Error("OfflineAudioContext not available");
+
+      const sampleRate = 44100;
+      const durationSeconds = 10;
+      const offline = new OfflineCtx(2, sampleRate * durationSeconds, sampleRate);
+
+      const osc = offline.createOscillator();
+      const panner = offline.createPanner();
+      panner.panningModel = "HRTF";
+
+      osc.connect(panner);
+      panner.connect(offline.destination);
+      osc.start(0);
+
+      const start = performance.now();
+      await offline.startRendering();
+      const elapsedMs = performance.now() - start;
+
+      const speedMultiplier = (durationSeconds * 1000) / elapsedMs;
+      setDspBenchSpeed(Math.round(speedMultiplier * 10) / 10);
+    } catch (err: any) {
+      console.warn("Benchmark error:", err);
+    } finally {
+      setIsBenchmarking(false);
+    }
+  };
 
   // Run YouTube Diagnostic Probe
   const handleRunProbe = async () => {
@@ -166,14 +266,17 @@ export default function AdminPage() {
     const logs: string[] = [];
     const pushLog = (msg: string) => logs.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
 
-    pushLog(`Starting live extraction probe for: ${testUrl}`);
+    pushLog(`Starting authenticated live extraction probe for: ${testUrl}`);
 
     try {
-      // Step 1: Probe Backend Invidious / Info API
+      // Step 1: Probe Backend Invidious / Info API with adminKey
       pushLog("Querying server-side extraction engine (/api/admin/probe)...");
       const probeRes = await fetch("/api/admin/probe", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-key": adminKey,
+        },
         body: JSON.stringify({ url: testUrl.trim() }),
       });
 
@@ -215,6 +318,7 @@ export default function AdminPage() {
             decodeSuccess: false,
             error: errText.slice(0, 300),
           },
+          raw: probeData,
         });
         return;
       }
@@ -248,8 +352,7 @@ export default function AdminPage() {
       setProbeResult({
         success: decodeSuccess,
         videoId: probeData.videoId,
-        totalTimeMs: probeData.totalTimeMs,
-        invidiousResult: probeData.invidiousResult,
+        totalTimeMs: Date.now() - streamStart,
         logs,
         streamTest: {
           status: streamRes.status,
@@ -259,627 +362,476 @@ export default function AdminPage() {
           decodeSuccess,
           duration,
         },
+        raw: probeData,
       });
     } catch (err: any) {
-      pushLog(`Fatal diagnostic error: ${err?.message}`);
+      pushLog(`✕ Fatal Probe Error: ${err?.message}`);
       setProbeResult({
         success: false,
         logs,
-        streamTest: {
-          status: 500,
-          contentType: "",
-          contentLength: "",
-          bytesReceived: 0,
-          decodeSuccess: false,
-          error: err?.message,
-        },
       });
     } finally {
       setIsProbing(false);
     }
   };
 
+  const handleDownloadDump = () => {
+    const dump = {
+      timestamp: new Date().toISOString(),
+      backendData,
+      backendLatency,
+      audioCtxDetails,
+      storageStats,
+      invidiousPings,
+      recentLogs: allLogs,
+    };
+    const blob = new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `sphere8d-telemetry-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-6xl mx-auto space-y-6">
-        {/* Top Header */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-2xl backdrop-blur-xl">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
-                  <Activity className="w-5 h-5" />
-                </span>
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-                  System Observability & Diagnostics
-                  <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-                    ADMIN
-                  </span>
-                </h1>
-              </div>
-              <p className="text-xs sm:text-sm text-slate-400">
-                Complete system observability answering every <strong>Why</strong>,{" "}
-                <strong>Where</strong>, <strong>How</strong>, and <strong>When</strong> behind the 8D/16D audio engine.
-              </p>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      {/* Header title */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+        <div>
+          <h1 className="text-2xl font-black text-white flex items-center gap-3">
+            <span className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+              <Activity className="w-6 h-6" />
+            </span>
+            Studio Control & Telemetry Suite
+          </h1>
+          <p className="text-xs text-slate-400 mt-1">
+            Real-time backend metrics, Invidious instance resilience, extraction lab, and DSP audit.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={checkHealth}
+            disabled={isHealthRefreshing}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-xs font-semibold text-slate-300 hover:text-white transition-all disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isHealthRefreshing ? "animate-spin" : ""}`} />
+            <span>Refresh Health</span>
+          </button>
+          <button
+            onClick={handleDownloadDump}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-xs font-semibold text-cyan-300 transition-all hover:scale-[1.02]"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Export Dump</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs bar */}
+      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar border-b border-slate-800/80 pb-2">
+        {[
+          { id: "infrastructure", label: "Infrastructure & Health", icon: Server },
+          { id: "invidious", label: "Invidious Pool Matrix", icon: Globe },
+          { id: "youtube-lab", label: "YouTube Extraction Lab", icon: Play },
+          { id: "client-dsp", label: "Client DSP & Storage", icon: Cpu },
+          { id: "terminal", label: "System Debug Logs", icon: Terminal },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                isActive
+                  ? "bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 border border-cyan-500/40 shadow-lg shadow-cyan-500/10"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 border border-transparent"
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── TAB 1: INFRASTRUCTURE & BACKEND HEALTH ────────────────────────────────────── */}
+      {activeTab === "infrastructure" && (
+        <div className="space-y-6">
+          {/* Target selector */}
+          <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 text-slate-300 font-semibold">
+              <Sliders className="w-4 h-4 text-cyan-400" />
+              <span>Target Backend Endpoint:</span>
             </div>
-
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800">
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    backendStatus === "healthy"
-                      ? "bg-emerald-400 animate-ping"
-                      : backendStatus === "checking"
-                      ? "bg-amber-400 animate-pulse"
-                      : "bg-red-400"
+            <div className="flex items-center gap-2 flex-wrap">
+              {BACKEND_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => setSelectedBackend(opt.id)}
+                  className={`px-3 py-1.5 rounded-xl transition-all font-mono text-[11px] ${
+                    selectedBackend === opt.id
+                      ? "bg-cyan-500 text-slate-950 font-bold shadow-md shadow-cyan-500/20"
+                      : "bg-slate-800 text-slate-300 hover:bg-slate-700"
                   }`}
-                />
-                <span className="text-xs font-mono">
-                  {backendStatus === "healthy"
-                    ? `Backend Online (${backendLatency}ms)`
-                    : backendStatus === "checking"
-                    ? "Checking..."
-                    : "Backend Offline"}
-                </span>
-              </div>
-
-              <Link
-                href="/"
-                className="px-3.5 py-2 bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white text-xs font-semibold rounded-xl shadow-md transition-all flex items-center gap-1.5"
-              >
-                <Radio className="w-3.5 h-3.5" />
-                <span>Return to Studio</span>
-              </Link>
+                >
+                  {opt.label.split(" (")[0]}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Navigation Tabs */}
-          <div className="flex items-center gap-1 mt-6 border-b border-slate-800 pb-1 overflow-x-auto no-scrollbar">
-            {[
-              { id: "diagnostics", label: "YouTube Extraction Probe", icon: Search },
-              { id: "faq", label: "The 'Why, Where, How, When'", icon: HelpCircle },
-              { id: "architecture", label: "Engine Architecture Map", icon: Layers },
-              { id: "backend", label: "Backend & Invidious Pool", icon: Server },
-              { id: "client-dsp", label: "Client Web Audio DSP", icon: Cpu },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`py-2 px-3.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+          {/* Quick Metrics Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Status card */}
+            <div className="p-5 rounded-2xl bg-slate-900/50 border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400 font-medium">Backend Status</span>
+                <span
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    backendStatus === "healthy"
+                      ? "bg-emerald-400 animate-pulse"
+                      : backendStatus === "checking"
+                      ? "bg-amber-400 animate-spin"
+                      : "bg-rose-500"
                   }`}
+                />
+              </div>
+              <div className="text-xl font-extrabold text-white capitalize">{backendStatus}</div>
+              <div className="text-[11px] text-slate-400 font-mono">
+                Round-trip RTT: {backendLatency !== null ? `${backendLatency}ms` : "--"}
+              </div>
+            </div>
+
+            {/* Memory Card */}
+            <div className="p-5 rounded-2xl bg-slate-900/50 border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400 font-medium">Memory Usage (RSS)</span>
+                <Gauge className="w-4 h-4 text-purple-400" />
+              </div>
+              <div className="text-xl font-extrabold text-white">
+                {backendData?.memory?.rssMb ? `${backendData.memory.rssMb} MB` : "N/A"}
+              </div>
+              <div className="text-[11px] text-slate-400 font-mono">
+                Heap: {backendData?.memory?.heapUsedMb || 0} / {backendData?.memory?.heapTotalMb || 0} MB
+              </div>
+            </div>
+
+            {/* Platform & Uptime */}
+            <div className="p-5 rounded-2xl bg-slate-900/50 border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400 font-medium">Uptime & Node</span>
+                <Clock className="w-4 h-4 text-cyan-400" />
+              </div>
+              <div className="text-xl font-extrabold text-white">
+                {backendData?.uptime
+                  ? `${Math.floor(backendData.uptime / 3600)}h ${Math.floor((backendData.uptime % 3600) / 60)}m`
+                  : "N/A"}
+              </div>
+              <div className="text-[11px] text-slate-400 font-mono">
+                Node: {backendData?.nodeVersion || "N/A"} ({backendData?.platform || "cloud"})
+              </div>
+            </div>
+
+            {/* yt-dlp & Invidious Pool */}
+            <div className="p-5 rounded-2xl bg-slate-900/50 border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400 font-medium">yt-dlp & Invidious</span>
+                <Globe className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div className="text-xl font-extrabold text-white">
+                {backendData?.invidious?.totalInstances || 12} Nodes
+              </div>
+              <div className="text-[11px] text-slate-400 font-mono">
+                Cookies: {backendData?.ytDlp?.hasCookies ? "Active" : "None"} • Proxy:{" "}
+                {backendData?.ytDlp?.hasProxy ? "Configured" : "Direct"}
+              </div>
+            </div>
+          </div>
+
+          {/* Details Table */}
+          <div className="p-6 rounded-3xl bg-slate-900/40 border border-slate-800 space-y-4">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <Server className="w-4 h-4 text-cyan-400" />
+              <span>Full Environment Specs</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
+              <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">
+                <span className="text-slate-400">Service Identifier:</span>
+                <p className="text-slate-200 font-bold">{backendData?.service || "8d-audio-backend"}</p>
+              </div>
+              <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">
+                <span className="text-slate-400">yt-dlp Binary Path:</span>
+                <p className="text-slate-200 font-bold break-all">{backendData?.ytDlp?.binary || "yt-dlp (PATH)"}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB 2: INVIDIOUS POOL MATRIX ────────────────────────────────────────── */}
+      {activeTab === "invidious" && (
+        <div className="space-y-6">
+          <div className="p-5 rounded-3xl bg-slate-900/40 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <Globe className="w-5 h-5 text-cyan-400" />
+                Live Invidious Instance Pool ({backendData?.invidious?.instances?.length || 12} Instances)
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Dynamic public instance cluster used to race audio metadata extraction in parallel.
+              </p>
+            </div>
+            <button
+              onClick={pingInvidiousPool}
+              disabled={isPingingPool}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition-all shadow-md shadow-cyan-500/20 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isPingingPool ? "animate-spin" : ""}`} />
+              <span>{isPingingPool ? "Pinging Instances..." : "Ping All Instances"}</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {(
+              backendData?.invidious?.instances || [
+                "inv.tux.pizza",
+                "invidious.drgns.space",
+                "invidious.asir.dev",
+                "yewtu.be",
+                "invidious.lunar.icu",
+                "invidious.private.coffee",
+                "invidious.jing.rocks",
+                "invidious.privacydev.net",
+                "iv.melmac.space",
+                "yt.chocolatemoo53.com",
+                "invidious.nerdvpn.de",
+                "inv.nadeko.net",
+              ]
+            ).map((inst) => {
+              const ping = invidiousPings[inst];
+              return (
+                <div
+                  key={inst}
+                  className="p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800 flex items-center justify-between gap-2"
                 >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span>{tab.label}</span>
-                </button>
+                  <div className="min-w-0">
+                    <div className="font-mono text-xs font-semibold text-slate-200 truncate">
+                      {inst}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      {ping ? (
+                        ping.ok ? (
+                          <span className="text-emerald-400">HTTP {ping.status} • {ping.latency}ms</span>
+                        ) : (
+                          <span className="text-rose-400">Failed / Blocked</span>
+                        )
+                      ) : (
+                        "Ready for race"
+                      )}
+                    </div>
+                  </div>
+                  <div
+                    className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                      ping ? (ping.ok ? "bg-emerald-400" : "bg-rose-500") : "bg-slate-600"
+                    }`}
+                  />
+                </div>
               );
             })}
           </div>
         </div>
+      )}
 
-        {/* TAB 1: YOUTUBE EXTRACTION DIAGNOSTIC PROBE */}
-        {activeTab === "diagnostics" && (
-          <div className="space-y-6">
-            <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl backdrop-blur-xl space-y-5">
-              <div>
-                <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                  <Terminal className="w-4 h-4 text-cyan-400" />
-                  <span>Live YouTube Stream Extraction Tester</span>
-                </h3>
-                <p className="text-xs text-slate-400 mt-1">
-                  Test any YouTube video URL through the multi-layer proxy chain. Inspects response headers, Invidious mirrors, byte stream chunks, and client Web Audio decode capability.
-                </p>
-              </div>
+      {/* ── TAB 3: YOUTUBE EXTRACTION LAB ───────────────────────────────────────── */}
+      {activeTab === "youtube-lab" && (
+        <div className="space-y-6">
+          <div className="p-6 rounded-3xl bg-slate-900/40 border border-slate-800 space-y-4">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <Play className="w-5 h-5 text-cyan-400" />
+              Live YouTube Audio Stream & Decoding Probe
+            </h2>
+            <p className="text-xs text-slate-400">
+              Performs an end-to-end extraction test: validates video ID, tests Invidious parallel race, executes yt-dlp extractor with Android client fallback, and decodes the stream waveform in Web Audio API.
+            </p>
 
-              {/* URL Input Form */}
-              <div className="flex flex-col sm:flex-row gap-3">
-                <input
-                  type="text"
-                  value={testUrl}
-                  onChange={(e) => setTestUrl(e.target.value)}
-                  placeholder="https://www.youtube.com/watch?v=..."
-                  className="flex-1 bg-slate-950 border border-slate-800 focus:border-cyan-500 rounded-xl px-4 py-2.5 text-xs font-mono text-slate-200 outline-none transition-all"
-                />
-                <button
-                  type="button"
-                  disabled={isProbing}
-                  onClick={handleRunProbe}
-                  className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 transition-all"
-                >
-                  {isProbing ? (
-                    <RotateCw className="w-4 h-4 animate-spin" />
+            <div className="flex flex-col sm:flex-row gap-3">
+              <input
+                type="text"
+                value={testUrl}
+                onChange={(e) => setTestUrl(e.target.value)}
+                placeholder="https://www.youtube.com/watch?v=..."
+                className="flex-1 px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500/60"
+              />
+              <button
+                onClick={handleRunProbe}
+                disabled={isProbing || !testUrl.trim()}
+                className="px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50 flex items-center justify-center gap-2 shrink-0"
+              >
+                {isProbing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                <span>{isProbing ? "Probing Stream..." : "Run Extraction Probe"}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Probe Results Box */}
+          {probeResult && (
+            <div className="p-6 rounded-3xl bg-slate-900/40 border border-slate-800 space-y-4 animate-in fade-in">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  {probeResult.success ? (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
                   ) : (
-                    <Play className="w-4 h-4" />
+                    <AlertCircle className="w-5 h-5 text-rose-400" />
                   )}
-                  <span>{isProbing ? "Running Diagnostics..." : "Run Test Probe"}</span>
-                </button>
-              </div>
-
-              {/* Quick Preset Buttons */}
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                <span className="text-[11px] font-mono">Quick test presets:</span>
-                <button
-                  type="button"
-                  onClick={() => setTestUrl("https://www.youtube.com/watch?v=CKVr4PejT3s")}
-                  className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px]"
-                >
-                  Roothi Diwali (CKVr4PejT3s)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTestUrl("https://www.youtube.com/watch?v=jfKfPfyJRdk")}
-                  className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px]"
-                >
-                  Lofi Girl (jfKfPfyJRdk)
-                </button>
-              </div>
-
-              {/* Probe Result Cards */}
-              {probeResult && (
-                <div className="space-y-4 pt-4 border-t border-slate-800">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                      <span className="text-[10px] font-mono uppercase text-slate-500">
-                        Probe Status
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        {probeResult.success ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                        ) : (
-                          <AlertCircle className="w-4 h-4 text-red-400" />
-                        )}
-                        <span
-                          className={`text-sm font-bold ${
-                            probeResult.success ? "text-emerald-400" : "text-red-400"
-                          }`}
-                        >
-                          {probeResult.success ? "SUCCESS" : "FAILED"}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                      <span className="text-[10px] font-mono uppercase text-slate-500">
-                        Invidious Proxy
-                      </span>
-                      <div className="text-sm font-semibold text-cyan-300 truncate">
-                        {probeResult.invidiousResult?.instance || "Fallback Mode"}
-                      </div>
-                    </div>
-
-                    <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                      <span className="text-[10px] font-mono uppercase text-slate-500">
-                        Payload Size
-                      </span>
-                      <div className="text-sm font-semibold text-slate-200">
-                        {probeResult.streamTest?.bytesReceived
-                          ? `${Math.round(probeResult.streamTest.bytesReceived / 1024)} KB`
-                          : "0 KB"}
-                      </div>
-                    </div>
-
-                    <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                      <span className="text-[10px] font-mono uppercase text-slate-500">
-                        Web Audio Decode
-                      </span>
-                      <div className="text-sm font-semibold text-purple-300">
-                        {probeResult.streamTest?.decodeSuccess
-                          ? `✓ Decoded (${Math.round(probeResult.streamTest.duration || 0)}s)`
-                          : "✕ Not Decoded"}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Trace Output Console */}
-                  <div className="space-y-2">
-                    <span className="text-xs font-mono text-slate-400 flex items-center gap-1">
-                      <Terminal className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>Live Diagnostic Trace:</span>
-                    </span>
-                    <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 font-mono text-xs text-slate-300 max-h-72 overflow-y-auto space-y-1 custom-scrollbar">
-                      {probeResult.logs.map((line, idx) => (
-                        <div
-                          key={idx}
-                          className={`${
-                            line.includes("✓")
-                              ? "text-emerald-400"
-                              : line.includes("✕") || line.includes("failed") || line.includes("error")
-                              ? "text-red-400"
-                              : "text-slate-300"
-                          }`}
-                        >
-                          {line}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 2: THE "WHY, WHERE, HOW, WHEN" GUIDE */}
-        {activeTab === "faq" && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Card 1: WHY */}
-              <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-3">
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
-                  <span className="px-2.5 py-1 rounded-xl bg-cyan-500/10 text-cyan-300 font-bold font-mono text-sm border border-cyan-500/30">
-                    WHY
+                  <span>
+                    Extraction Status: {probeResult.success ? "SUCCESSFUL" : "FAILED"} (
+                    {probeResult.totalTimeMs || 0}ms)
                   </span>
-                  <h3 className="font-bold text-white text-base">
-                    Why do YouTube videos work locally but sometimes fail on Render?
-                  </h3>
-                </div>
-                <div className="text-xs text-slate-300 space-y-2 leading-relaxed">
-                  <p>
-                    <strong>1. Datacenter IP Reputation:</strong> When running on your local laptop, your ISP assigns a residential IP address. YouTube rarely challenges residential IPs. However, cloud platforms like Render, AWS, and DigitalOcean use datacenter IP blocks. YouTube aggressively challenges datacenter IPs with bot-detection walls, returning:
-                  </p>
-                  <code className="block p-2 rounded-lg bg-slate-950 text-red-300 text-[11px] font-mono border border-red-950">
-                    ERROR: Failed to extract any player response; confirm you are on latest yt-dlp
-                  </code>
-                  <p>
-                    <strong>2. The Multi-Layer Solution:</strong> We implemented a resilient multi-tier bypass:
-                  </p>
-                  <ul className="list-disc pl-4 space-y-1 text-slate-400">
-                    <li>
-                      <strong>Primary:</strong> Decentralized Invidious instance mesh (`yt.chocolatemoo53.com`, `invidious.nerdvpn.de`, `inv.tux.pizza`). Invidious acts as an intermediate non-datacenter proxy.
-                    </li>
-                    <li>
-                      <strong>Secondary:</strong> Secret Netscape Cookies (`cookies.txt` or `YOUTUBE_COOKIES`), which authenticate requests with a trusted Google session cookie.
-                    </li>
-                    <li>
-                      <strong>Fallback:</strong> TV Samsung & VisionOS client spoofing.
-                    </li>
-                  </ul>
-                </div>
-              </div>
-
-              {/* Card 2: WHERE */}
-              <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-3">
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
-                  <span className="px-2.5 py-1 rounded-xl bg-purple-500/10 text-purple-300 font-bold font-mono text-sm border border-purple-500/30">
-                    WHERE
-                  </span>
-                  <h3 className="font-bold text-white text-base">
-                    Where is the music converted and stored?
-                  </h3>
-                </div>
-                <div className="text-xs text-slate-300 space-y-2 leading-relaxed">
-                  <p>
-                    <strong>100% Client-Side In-Browser Computation:</strong>
-                  </p>
-                  <p>
-                    Many audio converters upload your private files to a remote server. Our architecture is radically different:
-                  </p>
-                  <ul className="list-disc pl-4 space-y-1 text-slate-400">
-                    <li>
-                      <strong>Uploaded Local Files:</strong> Never touch any server. They are decoded directly by your phone or computer CPU via the Web Audio API.
-                    </li>
-                    <li>
-                      <strong>YouTube Streams:</strong> The Render backend only acts as a dumb stream byte pipe (relaying raw audio chunks).
-                    </li>
-                    <li>
-                      <strong>8D/16D Spatial DSP:</strong> The HRTF binaural convolution, 3D orbit simulation, Haas delay, and master limiting execute <strong>entirely in your browser</strong> using hardware-accelerated Web Audio nodes.
-                    </li>
-                    <li>
-                      <strong>Output WAV Files:</strong> Generated in memory using zero-copy `Int16Array` buffers and saved directly to your local download directory.
-                    </li>
-                  </ul>
-                </div>
-              </div>
-
-              {/* Card 3: HOW */}
-              <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-3">
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
-                  <span className="px-2.5 py-1 rounded-xl bg-emerald-500/10 text-emerald-300 font-bold font-mono text-sm border border-emerald-500/30">
-                    HOW
-                  </span>
-                  <h3 className="font-bold text-white text-base">
-                    How does the 16D Helical 3D Spatial Algorithm work?
-                  </h3>
-                </div>
-                <div className="text-xs text-slate-300 space-y-2 leading-relaxed">
-                  <p>
-                    Unlike primitive stereo panning that just pans Left/Right, our spatial engine implements:
-                  </p>
-                  <ul className="list-disc pl-4 space-y-1 text-slate-400">
-                    <li>
-                      <strong>Lissajous 3D Helical Elevation:</strong> The sound traverses an organic orbit around the head:
-                      <code className="block my-1 p-1.5 bg-slate-950 text-cyan-300 rounded font-mono text-[10px]">
-                        x = radius · cos(θ), z = radius · sin(θ), y = 0.95 · sin(2θ)
-                      </code>
-                      This lifts the sound above your head at the front and dips it below the chin at the rear.
-                    </li>
-                    <li>
-                      <strong>Phantom Center Vocal Anchor:</strong> Dedicated center gain (`centerAnchor`) routes lead vocals and kick drums through a non-orbiting center channel, eliminating vocal dizziness.
-                    </li>
-                    <li>
-                      <strong>Doppler & Pinna Filtering:</strong> Dynamic Biquad low-pass filtering softens highs when the audio is behind the listener, mimicking human ear cartilage reflection.
-                    </li>
-                  </ul>
-                </div>
-              </div>
-
-              {/* Card 4: WHEN */}
-              <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-3">
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
-                  <span className="px-2.5 py-1 rounded-xl bg-amber-500/10 text-amber-300 font-bold font-mono text-sm border border-amber-500/30">
-                    WHEN
-                  </span>
-                  <h3 className="font-bold text-white text-base">
-                    When does the background queue process and retry?
-                  </h3>
-                </div>
-                <div className="text-xs text-slate-300 space-y-2 leading-relaxed">
-                  <p>
-                    <strong>Non-Blocking Asynchronous Queue Runner:</strong>
-                  </p>
-                  <ul className="list-disc pl-4 space-y-1 text-slate-400">
-                    <li>
-                      <strong>Instant Visibility:</strong> When you import a playlist (e.g. 20 tracks), all 20 appear in the queue immediately as <em>Pending</em>. You can play already-converted tracks while the rest convert.
-                    </li>
-                    <li>
-                      <strong>Single-Track Worker:</strong> To avoid crashing mobile browsers with out-of-memory errors, the worker executes one track at a time.
-                    </li>
-                    <li>
-                      <strong>Instant Retry:</strong> If a track encounters a network timeout or cold start, click <strong>"Retry"</strong> to reset its status to <em>Pending</em>. The worker automatically picks it back up.
-                    </li>
-                    <li>
-                      <strong>Render Cold Starts:</strong> Free-tier Render instances spin down after 15 minutes. The first request may take 30-40 seconds to wake up the backend.
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 3: ENGINE ARCHITECTURE MAP */}
-        {activeTab === "architecture" && (
-          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
-            <div>
-              <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                <Layers className="w-4 h-4 text-cyan-400" />
-                <span>Full System Architecture & Data Flow</span>
-              </h3>
-              <p className="text-xs text-slate-400 mt-1">
-                Visual boundary separation between Server Network Relay and Browser Web Audio DSP.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Stage 1 */}
-              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
-                    STAGE 1: INGESTION
-                  </span>
-                  <Database className="w-4 h-4 text-cyan-400" />
-                </div>
-                <h4 className="text-sm font-bold text-white">Audio Ingestion & Relay</h4>
-                <p className="text-xs text-slate-400">
-                  User uploads files or pastes YouTube URLs. YouTube requests are resolved via Invidious mesh to bypass datacenter IP restrictions.
-                </p>
-                <div className="p-2.5 rounded-xl bg-slate-900 text-[11px] font-mono text-cyan-300 space-y-1">
-                  <div>• HTTP 307 direct redirect (0s Vercel timeout)</div>
-                  <div>• Invidious fallback chain</div>
-                  <div>• Zero-storage pass-through</div>
-                </div>
-              </div>
-
-              {/* Stage 2 */}
-              <div className="p-4 rounded-2xl bg-slate-950 border border-cyan-500/40 space-y-3 ring-1 ring-cyan-500/20">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/30">
-                    STAGE 2: BROWSER DSP
-                  </span>
-                  <Cpu className="w-4 h-4 text-purple-400" />
-                </div>
-                <h4 className="text-sm font-bold text-white">16D Web Audio Engine</h4>
-                <p className="text-xs text-slate-400">
-                  Executes inside the client's browser. Decodes raw audio into IEEE float32 buffers and passes them through the spatial DSP graph.
-                </p>
-                <div className="p-2.5 rounded-xl bg-slate-900 text-[11px] font-mono text-purple-300 space-y-1">
-                  <div>• Parametric Low-Shelf Bass EQ</div>
-                  <div>• 3D Helical Lissajous Panner</div>
-                  <div>• Phantom Center Vocal Anchor</div>
-                  <div>• Abbey Road Synthetic Reverb</div>
-                  <div>• Master Dynamics Limiter</div>
-                </div>
-              </div>
-
-              {/* Stage 3 */}
-              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
-                    STAGE 3: PLAYBACK & EXPORT
-                  </span>
-                  <Volume2 className="w-4 h-4 text-emerald-400" />
-                </div>
-                <h4 className="text-sm font-bold text-white">Binaural Deck & WAV Export</h4>
-                <p className="text-xs text-slate-400">
-                  Plays in real-time through headphones with 360° radar visualizer, or renders to lossless 16-bit 44.1kHz master WAV files.
-                </p>
-                <div className="p-2.5 rounded-xl bg-slate-900 text-[11px] font-mono text-emerald-300 space-y-1">
-                  <div>• Direct Int16Array WAV compiler</div>
-                  <div>• A/B Real-time bypass switch</div>
-                  <div>• Autoplay & shuffle playlist queue</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 4: BACKEND & INVIDIOUS POOL */}
-        {activeTab === "backend" && (
-          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                  <Server className="w-4 h-4 text-cyan-400" />
-                  <span>Backend Infrastructure & Invidious Pool</span>
                 </h3>
-                <p className="text-xs text-slate-400 mt-1">
-                  Live status of the yt-dlp binary, cookie auth, and active Invidious proxy nodes.
-                </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <select
-                  value={selectedBackend}
-                  onChange={(e) => setSelectedBackend(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 text-xs rounded-xl px-3 py-1.5 font-mono text-slate-200 outline-none"
-                >
-                  <option value="auto">Auto (Configured Backend)</option>
-                  <option value="local">Local (localhost:3001)</option>
-                  <option value="render">Live Render Backend</option>
-                </select>
-
-                <button
-                  type="button"
-                  onClick={checkHealth}
-                  className="p-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 hover:text-white transition-all"
-                  title="Refresh status"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Backend Metrics Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                <span className="text-[10px] font-mono uppercase text-slate-500">Service Status</span>
-                <div className="text-sm font-bold text-emerald-400 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                  {backendStatus.toUpperCase()}
-                </div>
-              </div>
-
-              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                <span className="text-[10px] font-mono uppercase text-slate-500">Ping Latency</span>
-                <div className="text-sm font-bold text-cyan-300">
-                  {backendLatency !== null ? `${backendLatency} ms` : "---"}
-                </div>
-              </div>
-
-              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                <span className="text-[10px] font-mono uppercase text-slate-500">Cookie Auth</span>
-                <div className="text-sm font-bold text-purple-300">
-                  {backendData?.ytDlp?.hasCookies ? "Active (Cookies Loaded)" : "Inactive"}
-                </div>
-              </div>
-
-              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                <span className="text-[10px] font-mono uppercase text-slate-500">Memory Footprint</span>
-                <div className="text-sm font-bold text-slate-200">
-                  {backendData?.memory?.rssMb ? `${backendData.memory.rssMb} MB RSS` : "---"}
-                </div>
-              </div>
-            </div>
-
-            {/* Invidious Mirrors List */}
-            <div className="space-y-3 pt-3 border-t border-slate-800">
-              <h4 className="text-xs font-mono font-semibold text-slate-300 uppercase">
-                Active Invidious Instance Pool ({backendData?.invidious?.totalInstances || 7} Mirrors)
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {(
-                  backendData?.invidious?.instances || [
-                    "yt.chocolatemoo53.com",
-                    "invidious.nerdvpn.de",
-                    "inv.tux.pizza",
-                    "invidious.projectsegfau.lt",
-                    "invidious.privacyredirect.com",
-                    "iv.melmac.space",
-                    "invidious.perennialte.ch",
-                  ]
-                ).map((instance, idx) => (
+              {/* Execution log step feed */}
+              <div className="p-4 rounded-2xl bg-black/60 border border-slate-800 font-mono text-xs text-slate-300 space-y-1.5 max-h-80 overflow-y-auto">
+                {probeResult.logs.map((log, idx) => (
                   <div
                     key={idx}
-                    className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 flex items-center justify-between text-xs"
+                    className={`leading-relaxed ${
+                      log.includes("✓")
+                        ? "text-emerald-300"
+                        : log.includes("✕") || log.includes("failed")
+                        ? "text-rose-300"
+                        : "text-slate-300"
+                    }`}
                   >
-                    <span className="font-mono text-cyan-300 truncate">{instance}</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                      Standby
-                    </span>
+                    {log}
                   </div>
                 ))}
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+      )}
 
-        {/* TAB 5: CLIENT WEB AUDIO DSP */}
-        {activeTab === "client-dsp" && (
-          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-5">
-            <div>
-              <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                <Cpu className="w-4 h-4 text-purple-400" />
-                <span>Client Web Audio DSP Inspector</span>
+      {/* ── TAB 4: CLIENT DSP & STORAGE AUDITOR ─────────────────────────────────── */}
+      {activeTab === "client-dsp" && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* AudioContext Spec Card */}
+            <div className="p-6 rounded-3xl bg-slate-900/40 border border-slate-800 space-y-4">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-cyan-400" />
+                <span>Web Audio Context Capabilities</span>
               </h3>
-              <p className="text-xs text-slate-400 mt-1">
-                Hardware capabilities of your current device browser executing the spatial 8D/16D pipeline.
-              </p>
+              <div className="space-y-2.5 font-mono text-xs">
+                <div className="flex justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <span className="text-slate-400">Context State:</span>
+                  <span className="text-emerald-400 font-bold">{audioCtxDetails?.state || "Unknown"}</span>
+                </div>
+                <div className="flex justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <span className="text-slate-400">Sample Rate:</span>
+                  <span className="text-slate-200 font-bold">{audioCtxDetails?.sampleRate || 44100} Hz</span>
+                </div>
+                <div className="flex justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <span className="text-slate-400">Hardware Concurrency:</span>
+                  <span className="text-cyan-400 font-bold">{audioCtxDetails?.hardwareConcurrency || 4} Cores</span>
+                </div>
+                <div className="flex justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <span className="text-slate-400">HRTF Panning Model:</span>
+                  <span className="text-purple-400 font-bold">
+                    {audioCtxDetails?.hrtfSupported ? "Supported" : "Unsupported"}
+                  </span>
+                </div>
+              </div>
             </div>
 
-            {audioCtxDetails ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                  <span className="text-[10px] font-mono uppercase text-slate-500">AudioContext State</span>
-                  <div className="text-sm font-bold text-emerald-400">{audioCtxDetails.state}</div>
+            {/* Offline Storage Quota Card */}
+            <div className="p-6 rounded-3xl bg-slate-900/40 border border-slate-800 space-y-4">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Database className="w-4 h-4 text-purple-400" />
+                <span>Browser Storage & IndexedDB</span>
+              </h3>
+              <div className="space-y-2.5 font-mono text-xs">
+                <div className="flex justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <span className="text-slate-400">IndexedDB Engine:</span>
+                  <span className="text-slate-200 font-bold">idb / localforage</span>
                 </div>
-
-                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                  <span className="text-[10px] font-mono uppercase text-slate-500">Hardware Sample Rate</span>
-                  <div className="text-sm font-bold text-cyan-300">
-                    {audioCtxDetails.sampleRate.toLocaleString()} Hz
-                  </div>
+                <div className="flex justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <span className="text-slate-400">Storage Used:</span>
+                  <span className="text-purple-400 font-bold">{storageStats?.usageMb || 0} MB</span>
                 </div>
-
-                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                  <span className="text-[10px] font-mono uppercase text-slate-500">HRTF Binaural Panner</span>
-                  <div className="text-sm font-bold text-purple-300">
-                    {audioCtxDetails.hrtfSupported ? "✓ Hardware Supported" : "Emulated"}
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                  <span className="text-[10px] font-mono uppercase text-slate-500">CPU Logical Cores</span>
-                  <div className="text-sm font-bold text-slate-200">
-                    {audioCtxDetails.hardwareConcurrency} Cores
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                  <span className="text-[10px] font-mono uppercase text-slate-500">Channels</span>
-                  <div className="text-sm font-bold text-slate-200">
-                    {audioCtxDetails.channels} Stereo Output ({audioCtxDetails.maxChannels} max)
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                  <span className="text-[10px] font-mono uppercase text-slate-500">WAV Compiler</span>
-                  <div className="text-sm font-bold text-emerald-400">
-                    TypedArray Int16 (Zero-Freeze)
-                  </div>
+                <div className="flex justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <span className="text-slate-400">Available Quota:</span>
+                  <span className="text-slate-200 font-bold">{storageStats?.quotaMb || 0} MB</span>
                 </div>
               </div>
+
+              {/* DSP Benchmark action */}
+              <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-slate-200">Offline DSP Benchmark</div>
+                  <div className="text-[10px] text-slate-400">
+                    {dspBenchSpeed ? `Speed: ${dspBenchSpeed}x realtime` : "Measure 8D rendering speed"}
+                  </div>
+                </div>
+                <button
+                  onClick={runDspBenchmark}
+                  disabled={isBenchmarking}
+                  className="px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-300 font-semibold text-xs transition-all disabled:opacity-50"
+                >
+                  {isBenchmarking ? "Running..." : "Test Speed"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB 5: SYSTEM DEBUG LOGS ────────────────────────────────────────────── */}
+      {activeTab === "terminal" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <Terminal className="w-5 h-5 text-cyan-400" />
+              <span>Real-Time Client & DSP Telemetry Feed</span>
+            </h2>
+            <button
+              onClick={() => clientLogger.clear()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-rose-400 hover:bg-slate-800 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Clear Buffer</span>
+            </button>
+          </div>
+
+          <div className="p-4 rounded-3xl bg-black/80 border border-slate-800 font-mono text-xs max-h-[500px] overflow-y-auto space-y-2">
+            {allLogs.length === 0 ? (
+              <div className="text-slate-500 text-center py-12">No telemetry logs recorded in this session.</div>
             ) : (
-              <div className="p-4 text-center text-xs text-slate-500">
-                Web Audio API not detected in current environment.
-              </div>
+              allLogs.map((l) => (
+                <div
+                  key={l.id}
+                  className={`p-2 rounded-lg border ${
+                    l.level === "error"
+                      ? "bg-rose-500/10 border-rose-500/30 text-rose-300"
+                      : l.level === "warn"
+                      ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                      : l.level === "success"
+                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                      : "bg-slate-900/60 border-slate-800 text-slate-300"
+                  }`}
+                >
+                  <span className="text-slate-500 mr-2">[{new Date(l.timestamp).toLocaleTimeString()}]</span>
+                  <span className="font-bold mr-2 uppercase text-[10px]">[{l.tag}]</span>
+                  <span>{l.message}</span>
+                </div>
+              ))
             )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,8 +1,20 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Headphones, Github, Sparkles, Radio, Activity } from "lucide-react";
 import BrandLogo from "./BrandLogo";
+import { UserDiagnosticsModal } from "./UserDiagnosticsModal";
 
 export default function Header() {
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
+
+  useEffect(() => {
+    const handleOpen = () => setIsDiagnosticsOpen(true);
+    window.addEventListener("open-user-diagnostics", handleOpen);
+    return () => window.removeEventListener("open-user-diagnostics", handleOpen);
+  }, []);
+
   return (
     <header className="bg-slate-950/80 border-b border-slate-800/80 sticky top-0 z-40 backdrop-blur-xl">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -40,13 +52,14 @@ export default function Header() {
             >
               HRTF Science
             </Link>
-            <Link
-              href="/admin"
+            <button
+              onClick={() => setIsDiagnosticsOpen(true)}
               className="text-slate-400 hover:text-cyan-400 transition-colors flex items-center gap-1"
+              title="View your browser conversion logs & diagnostics"
             >
               <Activity className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Diagnostics</span>
-            </Link>
+              <span>My Logs</span>
+            </button>
             <a
               href="https://github.com/TheCodePrism/8d-audio-converter"
               target="_blank"
@@ -59,6 +72,11 @@ export default function Header() {
           </nav>
         </div>
       </div>
+
+      <UserDiagnosticsModal
+        isOpen={isDiagnosticsOpen}
+        onClose={() => setIsDiagnosticsOpen(false)}
+      />
     </header>
   );
 }

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { YouTubeInfoResponse, YouTubeTrack } from "@/types";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { clientLogger } from "@/lib/clientLogger";
 
 interface YouTubeInputProps {
   onConvertTrack: (track: YouTubeTrack) => Promise<void>;
@@ -84,6 +85,7 @@ export default function YouTubeInput({
     setIsLoading(true);
     setInfo(null);
     setSelectedTrackIds(new Set());
+    clientLogger.info("YouTube", `Fetching info for: ${targetUrl}`);
 
     const maxRetries = 2;
     let attempt = 0;
@@ -140,6 +142,10 @@ export default function YouTubeInput({
         if (data.tracks && data.tracks.length > 0) {
           setSelectedTrackIds(new Set(data.tracks.map((t: YouTubeTrack) => t.id)));
         }
+        clientLogger.success(
+          "YouTube",
+          `Retrieved: ${data.title || "Track"} (${data.tracks?.length || 1} track(s))`
+        );
       } catch (err: any) {
         setWakingUpNotice(null);
         throw err;
@@ -150,7 +156,9 @@ export default function YouTubeInput({
       await executeFetch();
     } catch (err: any) {
       console.error(err);
-      setError(err?.message || "Could not retrieve YouTube video info.");
+      const msg = err?.message || "Could not retrieve YouTube video info.";
+      clientLogger.error("YouTube", msg);
+      setError(msg);
     } finally {
       setIsLoading(false);
       setWakingUpNotice(null);
