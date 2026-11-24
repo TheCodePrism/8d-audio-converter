@@ -388,7 +388,15 @@ export default function AudioConverter() {
   }, []);
 
   // Core background queue runner hook: concurrency, WakeLock, audio decoding, 8D DSP & export
-  const { isWakeLocked, retryTrack, retryAllFailed } = useAudioQueue({
+  const {
+    isWakeLocked,
+    isQueuePaused,
+    circuitBreakerNotice,
+    togglePauseQueue,
+    resumeQueue,
+    retryTrack,
+    retryAllFailed,
+  } = useAudioQueue({
     audioFiles,
     setAudioFiles,
     options,
@@ -784,7 +792,8 @@ export default function AudioConverter() {
       const link = document.createElement("a");
       link.href = convertedUrl;
       const cleanTitle = title.replace(/[^a-zA-Z0-9_-]/g, "_");
-      link.download = `${cleanTitle}_8D_Spatial.mp3`;
+      const ext = options.exportQuality === "wav" ? "wav" : "mp3";
+      link.download = `${cleanTitle}_8D_Spatial.${ext}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -1005,6 +1014,10 @@ export default function AudioConverter() {
               isPlaying={isPlaying}
               isWakeLocked={isWakeLocked}
               isExportingPack={isExportingPack}
+              isQueuePaused={isQueuePaused}
+              circuitBreakerNotice={circuitBreakerNotice}
+              onTogglePauseQueue={togglePauseQueue}
+              onResumeQueue={resumeQueue}
               activeMenuTrackId={activeMenu?.item.id}
               onSelectTrack={(index) => {
                 setCurrentTrackIndex(index);

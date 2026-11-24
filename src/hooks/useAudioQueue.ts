@@ -21,7 +21,7 @@ export const SUPPORTED_FORMATS = [
   "audio/flac",
 ];
 
-const STALL_TIMEOUT_MS = 45000; // Trigger timeout ONLY if stalled for 45s with zero progress
+const STALL_TIMEOUT_MS = 60000; // Trigger timeout ONLY if stalled for 60s with zero progress
 const MAX_CONVERSION_DURATION_MS = 360000; // 6 minutes max safety cap for extra-long tracks
 
 interface UseAudioQueueParams {
@@ -45,6 +45,11 @@ export function useAudioQueue({
 }: UseAudioQueueParams) {
   const [isWakeLocked, setIsWakeLocked] = useState<boolean>(false);
   const wakeLockRef = useRef<any>(null);
+
+  // Queue Circuit-Breaker & Pause Controls
+  const [isQueuePaused, setIsQueuePaused] = useState<boolean>(false);
+  const [circuitBreakerNotice, setCircuitBreakerNotice] = useState<string | null>(null);
+  const consecutiveFailuresRef = useRef<number>(0);
 
   // Concurrency & Cancellation tracking
   const activeConvertingIdsRef = useRef<Set<string>>(new Set());
@@ -243,9 +248,52 @@ export function useAudioQueue({
               throw new Error(errMsg);
             }
 
-            updateItemProgress(item.id, 40, "Downloading audio stream chunks...", runId);
+            updateItemProgress(item.id, 35, "Connecting & streaming audio...", runId);
             const contentType = streamRes.headers.get("content-type") || "";
-            const audioBlob = await streamRes.blob();
+            const contentLengthHeader = streamRes.headers.get("content-length");
+            const totalBytes = contentLengthHeader ? parseInt(contentLengthHeader, 10) : 0;
+
+            let audioBlob: Blob;
+            if (streamRes.body && typeof streamRes.body.getReader === "function") {
+              const reader = streamRes.body.getReader();
+              const chunks: Uint8Array[] = [];
+              let receivedBytes = 0;
+              let lastReportTime = Date.now();
+
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                if (activeRunIdsRef.current.get(item.id) !== runId) {
+                  try {
+                    reader.cancel();
+                  } catch {}
+                  return;
+                }
+                if (value) {
+                  chunks.push(value);
+                  receivedBytes += value.length;
+                  // Heartbeat: update watchdog timestamp on every chunk so active streaming never times out
+                  lastActivityPerTrackRef.current.set(item.id, Date.now());
+
+                  const now = Date.now();
+                  if (now - lastReportTime > 600) {
+                    lastReportTime = now;
+                    let pct = 35;
+                    let msg = `Streaming audio (${(receivedBytes / (1024 * 1024)).toFixed(1)} MB)...`;
+                    if (totalBytes > 0) {
+                      const fraction = Math.min(1, receivedBytes / totalBytes);
+                      pct = Math.round(35 + fraction * 20); // 35% -> 55%
+                      msg = `Streaming audio (${Math.round(fraction * 100)}% • ${(receivedBytes / (1024 * 1024)).toFixed(1)} MB)...`;
+                    }
+                    updateItemProgress(item.id, pct, msg, runId);
+                  }
+                }
+              }
+
+              audioBlob = new Blob(chunks, { type: contentType || "audio/mp4" });
+            } else {
+              audioBlob = await streamRes.blob();
+            }
             originalBlob = audioBlob;
 
             if (activeRunIdsRef.current.get(item.id) !== runId) return;
@@ -298,22 +346,48 @@ export function useAudioQueue({
 
           if (activeRunIdsRef.current.get(item.id) !== runId) return;
 
-          updateItemProgress(item.id, 75, "Rendering 360° HRTF & spatial reverb...", runId);
-          const processedBuffer = await process8DAudio(decodedBuffer, options);
+          // P0-4: DSP error boundary — catch OfflineAudioContext OOM / crash
+          let processedBuffer: AudioBuffer;
+          let wavBlob: Blob;
+          let dspFallbackToWav = false;
+          try {
+            updateItemProgress(item.id, 75, "Rendering 360° HRTF & spatial reverb...", runId);
+            processedBuffer = await process8DAudio(decodedBuffer, options);
 
-          if (activeRunIdsRef.current.get(item.id) !== runId) return;
+            if (activeRunIdsRef.current.get(item.id) !== runId) return;
 
-          const bitrate = options.exportQuality === "320" ? 320 : 192;
-          updateItemProgress(item.id, 85, `Mastering studio MP3 (${bitrate} kbps)...`, runId);
+            if (options.exportQuality === "wav") {
+              updateItemProgress(item.id, 85, "Mastering Studio Lossless WAV (16-bit PCM)...", runId);
+              wavBlob = float32ToWav(processedBuffer);
+            } else {
+              const bitrate = options.exportQuality === "320" ? 320 : 192;
+              updateItemProgress(item.id, 85, `Mastering studio MP3 (${bitrate} kbps)...`, runId);
 
-          const wavBlob = await audioBufferToMp3(processedBuffer, bitrate, (pct) =>
-            updateItemProgress(
-              item.id,
-              pct,
-              `Mastering studio MP3 (${pct}%)...`,
-              runId
-            )
-          );
+              wavBlob = await audioBufferToMp3(processedBuffer, bitrate, (pct) =>
+                updateItemProgress(
+                  item.id,
+                  pct,
+                  `Mastering studio MP3 (${pct}%)...`,
+                  runId
+                )
+              );
+            }
+          } catch (dspErr) {
+            const errMsg = dspErr instanceof Error ? dspErr.message : String(dspErr);
+            console.error("[8D DSP] Processing failed:", errMsg, dspErr);
+
+            if (decodedBuffer.duration > 300) {
+              // Track > 5 min — likely OOM in OfflineAudioContext; fall back to stereo WAV
+              dspFallbackToWav = true;
+              updateItemProgress(item.id, 85, "Track too large — exporting original WAV...", runId);
+              wavBlob = float32ToWav(decodedBuffer);
+              processedBuffer = decodedBuffer; // satisfy TS; unused after fallback
+            } else {
+              throw new Error(
+                `8D audio processing failed: ${errMsg}. Please try a shorter or lower-quality track.`
+              );
+            }
+          }
 
           if (activeRunIdsRef.current.get(item.id) !== runId) return;
 
@@ -328,6 +402,9 @@ export function useAudioQueue({
             .then(() => refreshSavedLibrary())
             .catch((e) => console.warn("Auto-save to storage failed:", e));
 
+          // Reset circuit-breaker counter on successful track completion
+          consecutiveFailuresRef.current = 0;
+
           setAudioFiles((prev) =>
             prev.map((f) =>
               f.id === item.id
@@ -337,7 +414,9 @@ export function useAudioQueue({
                     convertedUrl,
                     status: "complete",
                     progress: 100,
-                    stage: "8D Spatial Master Ready",
+                    stage: dspFallbackToWav
+                      ? "⚠️ WAV fallback — track too large for 8D"
+                      : "8D Spatial Master Ready",
                     size: wavBlob.size,
                     rawBuffer: decodedBuffer,
                   }
@@ -355,6 +434,16 @@ export function useAudioQueue({
 
         console.error("Conversion error for track:", item.name, err);
         const msg = err?.message || "Audio conversion failed.";
+
+        // Circuit breaker: track consecutive errors to prevent domino failures across huge queues
+        consecutiveFailuresRef.current += 1;
+        if (consecutiveFailuresRef.current >= 3) {
+          setIsQueuePaused(true);
+          setCircuitBreakerNotice(
+            "Queue auto-paused: 3 tracks failed consecutively. The cloud streaming proxy may be busy. Click Resume Queue when ready, or try converting tracks individually."
+          );
+        }
+
         setAudioFiles((prev) =>
           prev.map((f) =>
             f.id === item.id
@@ -383,10 +472,17 @@ export function useAudioQueue({
   );
 
   // Background Parallel Queue Runner:
-  // Dynamically launches up to options.concurrency (default 2) conversions in parallel.
-  // Processes pending tracks cleanly without disruptive auto-retry loops.
+  // Dynamically launches conversions in parallel with queue pacing & cloud instance safeguards
   useEffect(() => {
-    const maxConcurrency = options.concurrency || 2;
+    if (isQueuePaused) return;
+
+    // Safeguard: Cap concurrency to 1 if any YouTube track is active to protect free-tier cloud instances
+    const hasActiveYoutube = audioFiles.some(
+      (f) => f.status === "converting" && f.sourceType === "youtube"
+    );
+    const configuredConcurrency = options.concurrency || 2;
+    const maxConcurrency = hasActiveYoutube ? 1 : configuredConcurrency;
+
     const convertingTracks = audioFiles.filter((f) => f.status === "converting");
     const activeCount = convertingTracks.length;
     const availableSlots = maxConcurrency - activeCount;
@@ -400,14 +496,33 @@ export function useAudioQueue({
 
     if (pendingTracks.length > 0) {
       const batchToStart = pendingTracks.slice(0, availableSlots);
-      for (const track of batchToStart) {
-        activeConvertingIdsRef.current.add(track.id);
-        processQueueItem(track).finally(() => {
-          activeConvertingIdsRef.current.delete(track.id);
-        });
-      }
+
+      // Polite 750ms pacing delay between launching queue items to avoid connection bursts
+      const timer = setTimeout(() => {
+        if (isQueuePaused) return;
+        for (const track of batchToStart) {
+          if (activeConvertingIdsRef.current.has(track.id)) continue;
+          activeConvertingIdsRef.current.add(track.id);
+          processQueueItem(track).finally(() => {
+            activeConvertingIdsRef.current.delete(track.id);
+          });
+        }
+      }, 750);
+
+      return () => clearTimeout(timer);
     }
-  }, [audioFiles, options.concurrency, processQueueItem]);
+  }, [audioFiles, isQueuePaused, options.concurrency, processQueueItem]);
+
+  // Pause / Resume Queue Controls
+  const togglePauseQueue = useCallback(() => {
+    setIsQueuePaused((prev) => !prev);
+  }, []);
+
+  const resumeQueue = useCallback(() => {
+    setIsQueuePaused(false);
+    setCircuitBreakerNotice(null);
+    consecutiveFailuresRef.current = 0;
+  }, []);
 
   // Synchronized Manual Retry Handler for individual tracks
   const retryTrack = useCallback(
@@ -450,6 +565,10 @@ export function useAudioQueue({
 
   // Synchronized Manual Retry Handler for all failed tracks
   const retryAllFailed = useCallback(() => {
+    setIsQueuePaused(false);
+    setCircuitBreakerNotice(null);
+    consecutiveFailuresRef.current = 0;
+
     setAudioFiles((prev) =>
       prev.map((f) => {
         if (f.status === "error") {
@@ -481,6 +600,10 @@ export function useAudioQueue({
 
   return {
     isWakeLocked,
+    isQueuePaused,
+    circuitBreakerNotice,
+    togglePauseQueue,
+    resumeQueue,
     processQueueItem,
     retryTrack,
     retryAllFailed,

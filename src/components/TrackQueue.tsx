@@ -31,6 +31,10 @@ interface TrackQueueProps {
   isWakeLocked: boolean;
   isExportingPack: boolean;
   activeMenuTrackId?: string;
+  isQueuePaused?: boolean;
+  circuitBreakerNotice?: string | null;
+  onTogglePauseQueue?: () => void;
+  onResumeQueue?: () => void;
   onSelectTrack: (index: number) => void;
   onRetryAllFailed: () => void;
   onExportPack: () => void;
@@ -52,6 +56,10 @@ export default function TrackQueue({
   isWakeLocked,
   isExportingPack,
   activeMenuTrackId,
+  isQueuePaused = false,
+  circuitBreakerNotice,
+  onTogglePauseQueue,
+  onResumeQueue,
   onSelectTrack,
   onRetryAllFailed,
   onExportPack,
@@ -91,6 +99,22 @@ export default function TrackQueue({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {pendingTracks.length > 0 && onTogglePauseQueue && (
+            <button
+              type="button"
+              onClick={onTogglePauseQueue}
+              className={`text-xs transition-all flex items-center gap-1 font-semibold px-2.5 py-1 rounded-xl border shadow-sm ${
+                isQueuePaused
+                  ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20"
+                  : "text-slate-300 bg-slate-800/80 border-slate-700/80 hover:text-white hover:bg-slate-700/80"
+              }`}
+              title={isQueuePaused ? "Resume auto-converting pending queue" : "Pause auto-converting queue"}
+            >
+              {isQueuePaused ? <Play className="w-3.5 h-3.5 fill-current" /> : <Pause className="w-3.5 h-3.5 fill-current" />}
+              <span>{isQueuePaused ? "Resume Queue" : "Pause Queue"}</span>
+            </button>
+          )}
+
           {failedTracks.length > 0 && (
             <button
               type="button"
@@ -139,6 +163,27 @@ export default function TrackQueue({
           )}
         </div>
       </div>
+
+      {circuitBreakerNotice && (
+        <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-slate-900/80 to-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 text-xs shadow-lg animate-in fade-in duration-300">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-amber-200">Conversion Queue Paused</p>
+              <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">{circuitBreakerNotice}</p>
+            </div>
+          </div>
+          {onResumeQueue && (
+            <button
+              type="button"
+              onClick={onResumeQueue}
+              className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold shrink-0 transition-all text-xs shadow-md shadow-amber-500/20 active:scale-95"
+            >
+              Resume Queue
+            </button>
+          )}
+        </div>
+      )}
 
       {audioFiles.length === 0 ? (
         <div className="p-8 text-center space-y-3">

@@ -57,6 +57,8 @@ async function extractInfo(cleanUrl) {
     "--geo-bypass",
     "--geo-bypass-country",
     "IN",
+    "--extractor-args",
+    "youtube:player_client=android,ios,web_embedded;player_skip=webpage,configs",
     "--add-header",
     "Referer: https://www.youtube.com/",
     "--add-header",
@@ -171,7 +173,8 @@ function streamDirect(cleanUrl, req, res) {
     "--geo-bypass",
     "--geo-bypass-country",
     "IN",
-    ...(client ? ["--extractor-args", `youtube:player_client=${client}`] : []),
+    "--extractor-args",
+    `youtube:player_client=${client || "android,ios,web_embedded;player_skip=webpage,configs"}`,
     "--add-header",
     "Referer: https://www.youtube.com/",
     "--add-header",
@@ -247,6 +250,12 @@ function streamDirect(cleanUrl, req, res) {
           if (useProxy && proxyArgs.length > 0) {
             console.warn("[YouTube Proxy] Stream through proxy failed or blocked. Retrying WITHOUT proxy...");
             startStream(false, false, client);
+            return;
+          }
+          // If default client failed or was blocked by anti-bot/429, retry with pure android client
+          if (!client && (stderr.includes("Sign in to confirm") || stderr.includes("HTTP Error 429") || stderr.includes("Failed to extract any player response"))) {
+            console.warn("[YouTube Client] Stream blocked. Retrying with pure android client...");
+            startStream(false, false, "android");
             return;
           }
           let cleanErr =

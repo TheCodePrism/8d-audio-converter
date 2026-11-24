@@ -14,6 +14,13 @@ import {
   Headphones,
   Zap,
   Award,
+  Maximize2,
+  ScanLine,
+  Infinity,
+  Activity,
+  Building2,
+  Church,
+  Disc3,
 } from "lucide-react";
 import { AudioProcessingOptions } from "@/types";
 import { PRESETS } from "@/lib/audioProcessing";
@@ -195,12 +202,51 @@ export default function AudioSettings({
                 </div>
               </div>
 
+              {/* Orbit Path Trajectory */}
+              <div className="space-y-2.5 bg-slate-900/50 p-4 rounded-2xl border border-slate-800/60 hover:border-slate-700/60 transition-colors">
+                <div className="flex justify-between text-xs">
+                  <span className="flex items-center gap-1.5 font-semibold text-slate-200">
+                    <Compass className="w-3.5 h-3.5 text-cyan-400" />
+                    Orbit Trajectory Path
+                  </span>
+                  <span className="text-cyan-400 font-mono font-bold bg-cyan-500/10 px-2 py-0.5 rounded-lg border border-cyan-500/20 capitalize">
+                    {options.orbitPattern || "circle"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { val: "circle", label: "Circle", sub: "360° Round", icon: <RotateCw className="w-3 h-3" /> },
+                    { val: "figure8", label: "Figure-8", sub: "Infinity ∞", icon: <Infinity className="w-3 h-3" /> },
+                    { val: "spiral", label: "Spiral", sub: "In-and-Out", icon: <Disc3 className="w-3 h-3" /> },
+                    { val: "pendulum", label: "Pendulum", sub: "Left ↔ Right", icon: <Activity className="w-3 h-3" /> },
+                  ].map(({ val, label, sub, icon }) => (
+                    <button
+                      key={val}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => handleOptionChange("orbitPattern", val)}
+                      className={`p-2 rounded-xl text-center border transition-all ${
+                        (options.orbitPattern || "circle") === val
+                          ? "border-cyan-500/70 bg-cyan-500/15 text-cyan-200 shadow-sm shadow-cyan-500/10"
+                          : "border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200 bg-slate-900/40"
+                      }`}
+                    >
+                      <div className="flex items-center justify-center gap-1 text-xs font-bold">
+                        {icon}
+                        {label}
+                      </div>
+                      <span className="text-[10px] text-slate-500 block mt-0.5">{sub}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Room Reverb */}
               <div className="space-y-2.5 bg-slate-900/50 p-4 rounded-2xl border border-slate-800/60 hover:border-slate-700/60 transition-colors">
                 <div className="flex justify-between text-xs">
                   <span className="flex items-center gap-1.5 font-semibold text-slate-200">
                     <Radio className="w-3.5 h-3.5 text-purple-400" />
-                    Room Reverb
+                    Room Reverb &amp; Acoustic Space
                   </span>
                   <span className="text-purple-400 font-mono font-bold bg-purple-500/10 px-2 py-0.5 rounded-lg border border-purple-500/20">
                     {Math.round(options.reverbLevel * 100)}% Wet
@@ -215,6 +261,29 @@ export default function AudioSettings({
                 />
                 <div className="flex justify-between text-[10px] text-slate-600 font-mono">
                   <span>0% (Studio Dry)</span><span>15% (Natural)</span><span>50% (Cathedral)</span>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5 pt-1">
+                  {[
+                    { val: "studio", label: "Booth", icon: <Radio className="w-2.5 h-2.5" /> },
+                    { val: "club", label: "Club", icon: <Building2 className="w-2.5 h-2.5" /> },
+                    { val: "hall", label: "Hall", icon: <Sparkles className="w-2.5 h-2.5" /> },
+                    { val: "cathedral", label: "Cathedral", icon: <Church className="w-2.5 h-2.5" /> },
+                  ].map(({ val, label, icon }) => (
+                    <button
+                      key={val}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => handleOptionChange("reverbRoom", val)}
+                      className={`py-1.5 px-1 rounded-lg text-center border transition-all text-[11px] font-semibold flex items-center justify-center gap-1 ${
+                        (options.reverbRoom || "club") === val
+                          ? "border-purple-500/70 bg-purple-500/20 text-purple-200 shadow-sm"
+                          : "border-slate-800/80 hover:border-slate-700 text-slate-400 hover:text-slate-300 bg-slate-900/60"
+                      }`}
+                    >
+                      {icon}
+                      {label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -302,6 +371,58 @@ export default function AudioSettings({
                   Keeps vocals and kick drum grounded in front while spatial instruments orbit in 3D.
                 </p>
               </div>
+
+              {/* Spatial Radius */}
+              <div className="space-y-2.5 bg-slate-900/50 p-4 rounded-2xl border border-slate-800/60 hover:border-slate-700/60 transition-colors">
+                <div className="flex justify-between text-xs">
+                  <span className="flex items-center gap-1.5 font-semibold text-slate-200">
+                    <Maximize2 className="w-3.5 h-3.5 text-sky-400" />
+                    Spatial Radius
+                  </span>
+                  <span className="text-sky-400 font-mono font-bold bg-sky-500/10 px-2 py-0.5 rounded-lg border border-sky-500/20">
+                    {options.spatialRadius.toFixed(1)} m
+                  </span>
+                </div>
+                <input
+                  type="range" min="1" max="4" step="0.1"
+                  disabled={disabled}
+                  value={options.spatialRadius}
+                  onChange={(e) => handleOptionChange("spatialRadius", parseFloat(e.target.value))}
+                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-400"
+                />
+                <div className="flex justify-between text-[10px] text-slate-600 font-mono">
+                  <span>1.0 m (In-ear)</span><span>2.5 m (Studio)</span><span>4.0 m (Arena)</span>
+                </div>
+                <p className="text-[10px] text-slate-600 leading-relaxed">
+                  Virtual distance from the listener to the orbiting sound source.
+                </p>
+              </div>
+
+              {/* Stereo Width */}
+              <div className="space-y-2.5 bg-slate-900/50 p-4 rounded-2xl border border-slate-800/60 hover:border-slate-700/60 transition-colors">
+                <div className="flex justify-between text-xs">
+                  <span className="flex items-center gap-1.5 font-semibold text-slate-200">
+                    <ScanLine className="w-3.5 h-3.5 text-pink-400" />
+                    Stereo Width
+                  </span>
+                  <span className="text-pink-400 font-mono font-bold bg-pink-500/10 px-2 py-0.5 rounded-lg border border-pink-500/20">
+                    {Math.round(((options.stereoWidth ?? 0.28) / 0.6) * 100)}%
+                  </span>
+                </div>
+                <input
+                  type="range" min="0" max="0.6" step="0.02"
+                  disabled={disabled}
+                  value={options.stereoWidth ?? 0.28}
+                  onChange={(e) => handleOptionChange("stereoWidth", parseFloat(e.target.value))}
+                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-pink-400"
+                />
+                <div className="flex justify-between text-[10px] text-slate-600 font-mono">
+                  <span>Mono-width</span><span>Default</span><span>Hyper-wide</span>
+                </div>
+                <p className="text-[10px] text-slate-600 leading-relaxed">
+                  Angular spread between L/R stereo panners. Wider = broader soundstage.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -314,10 +435,14 @@ export default function AudioSettings({
                 Export Quality
               </span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20">
-                {options.exportQuality === "320" ? "320 kbps (Studio)" : "192 kbps (Compact)"}
+                {options.exportQuality === "wav"
+                  ? "Lossless WAV (Studio Master)"
+                  : options.exportQuality === "320"
+                  ? "320 kbps (Hi-Fi MP3)"
+                  : "192 kbps (Compact MP3)"}
               </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
                 type="button" disabled={disabled}
                 onClick={() => handleOptionChange("exportQuality", "192")}
@@ -336,11 +461,11 @@ export default function AudioSettings({
                     MP3 – Compact
                   </div>
                   <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                    192 kbps
+                    192k
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-300 font-medium">Default • ~5 MB / 4-min song</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Fastest loading, ultra-smooth on mobile data, transparent fidelity.</p>
+                <p className="text-[11px] text-slate-300 font-medium">Default • ~5 MB</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Fastest export, ultra-smooth streaming, solid 8D fidelity.</p>
               </button>
 
               <button
@@ -358,14 +483,39 @@ export default function AudioSettings({
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5 font-bold text-xs text-slate-100">
                     <Award className="w-3.5 h-3.5 text-purple-400" />
-                    MP3 – High Fidelity
+                    MP3 – Hi-Fi
                   </div>
                   <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                    320 kbps
+                    320k
                   </span>
                 </div>
-                <p className="text-[11px] text-purple-200 font-medium">Audiophile • ~9 MB / 4-min song</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Maximum possible MP3 quality, crystal studio details, strictly ≤ 15 MB.</p>
+                <p className="text-[11px] text-purple-200 font-medium">Audiophile • ~9 MB</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Maximum MP3 bitrate, pristine acoustic details &amp; reverb tails.</p>
+              </button>
+
+              <button
+                type="button" disabled={disabled}
+                onClick={() => handleOptionChange("exportQuality", "wav")}
+                className={`p-4 rounded-2xl border text-left transition-all relative overflow-hidden group/q ${
+                  options.exportQuality === "wav"
+                    ? "border-amber-500/60 bg-gradient-to-br from-amber-500/10 to-slate-900/50 shadow-lg shadow-amber-500/10"
+                    : "border-slate-800/80 hover:border-slate-700 bg-slate-900/40"
+                }`}
+              >
+                {options.exportQuality === "wav" && (
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+                )}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-slate-100">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    Studio WAV
+                  </div>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    Lossless
+                  </span>
+                </div>
+                <p className="text-[11px] text-amber-200 font-medium">16-bit PCM • ~40 MB</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Zero compression loss, instant rendering, production-ready.</p>
               </button>
             </div>
           </div>
@@ -384,11 +534,11 @@ export default function AudioSettings({
             </div>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { n: 1, label: "1× Single", sub: "Battery Saver" },
-                { n: 2, label: "2× Parallel", sub: "Recommended", highlight: true },
-                { n: 3, label: "3× Turbo", sub: "Fast Desktop" },
+                { n: 1, label: "1× Single", sub: "YouTube Safe", highlight: true },
+                { n: 2, label: "2× Parallel", sub: "Fast Desktop" },
+                { n: 3, label: "3× Turbo", sub: "Local Files" },
               ].map(({ n, label, sub, highlight }) => {
-                const active = (n === 2 ? (options.concurrency || 2) === 2 : options.concurrency === n);
+                const active = (n === 1 ? options.concurrency === 1 : (n === 2 ? (options.concurrency || 2) === 2 : options.concurrency === n));
                 return (
                   <button
                     key={n}
@@ -407,7 +557,7 @@ export default function AudioSettings({
               })}
             </div>
             <p className="text-[10px] text-slate-600 mt-2 leading-relaxed">
-              Converts multiple songs in the queue concurrently, cutting total playlist conversion time by 50%–66%.
+              1× Single is recommended for cloud YouTube playlists to prevent rate limits. 2× and 3× Turbo process multiple local files simultaneously.
             </p>
           </div>
 

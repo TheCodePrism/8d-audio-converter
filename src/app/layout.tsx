@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -18,6 +19,12 @@ export const metadata: Metadata = {
   title: "Sphere8D — Free Online 360° Spatial Sound & 8D Audio Studio",
   description:
     "Transform any music or audio track into an immersive 8D spatial audio experience with 360-degree binaural HRTF rotation, deep bass enhancement, and concert reverb.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Sphere8D",
+  },
   openGraph: {
     title: "Sphere8D — 360° Binaural Spatial Music Studio",
     description: "Immersive 8D audio converter and 360° spatial music player.",
@@ -31,6 +38,12 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = {
+  themeColor: "#07090E",
+  width: "device-width",
+  initialScale: 1,
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -41,6 +54,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#07090E] text-slate-100 min-h-screen flex flex-col`}
       >
+        <ServiceWorkerRegistration />
         {children}
       </body>
     </html>

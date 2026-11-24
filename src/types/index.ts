@@ -6,7 +6,10 @@ export interface AudioProcessingOptions {
   spatialRadius: number; // Virtual distance from listener (1 to 4)
   verticalOrbit?: boolean; // 16D Helical 3D elevation movement (over head / under chin)
   centerAnchor?: number; // 0.0 to 0.4 (Center vocal/kick anchor level to keep vocals solid)
-  exportQuality?: "192" | "320"; // "192" = Compact MP3 (192 kbps, ~5MB), "320" = High Fidelity MP3 (320 kbps, ~9MB)
+  stereoWidth?: number; // 0.0 to 0.6 (angular stereo spread in radians, default 0.28)
+  orbitPattern?: "circle" | "figure8" | "spiral" | "pendulum"; // 8D trajectory path
+  reverbRoom?: "studio" | "club" | "hall" | "cathedral"; // Acoustic room environment
+  exportQuality?: "192" | "320" | "wav"; // "192" = Compact MP3 (~5MB), "320" = Hi-Fi MP3 (~9MB), "wav" = Studio Lossless WAV (~40MB)
   concurrency?: 1 | 2 | 3; // Number of parallel conversions (default: 2)
 }
 

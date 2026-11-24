@@ -28,18 +28,21 @@ export async function POST(req: NextRequest) {
     try {
       data = JSON.parse(rawText);
     } catch {
-      data = {
-        error:
-          response.status === 502 || response.status === 503
-            ? "YouTube backend service is temporarily waking up. Please retry in a few moments."
-            : rawText || "Failed to parse response from YouTube service.",
-      };
+      let friendlyError = "Failed to parse response from YouTube service.";
+      if (response.status === 502 || response.status === 503) {
+        friendlyError = "YouTube backend service is temporarily waking up. Please retry in a few moments.";
+      } else if (response.status === 404) {
+        friendlyError = "YouTube backend endpoint not found. Please verify service configuration.";
+      } else if (rawText && !rawText.trim().startsWith("<")) {
+        friendlyError = rawText;
+      }
+      data = { error: friendlyError };
     }
     return NextResponse.json(data, { status: response.status });
   } catch (error: any) {
     console.error("YouTube info proxy error:", error);
     return NextResponse.json(
-      { error: "Failed to reach the YouTube backend service." },
+      { error: `Failed to reach the YouTube backend service (${error?.message || "connection failed"}).` },
       { status: 502 }
     );
   }

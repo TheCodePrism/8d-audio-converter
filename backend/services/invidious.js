@@ -33,7 +33,8 @@ async function refreshInvidiousPool() {
   }
 }
 
-// Refresh pool periodically
+// Refresh pool periodically and sync once on startup
+refreshInvidiousPool();
 setInterval(refreshInvidiousPool, INVIDIOUS_POOL_SYNC_MS).unref();
 
 function getLiveInstances() {

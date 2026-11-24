@@ -9,6 +9,9 @@ export const DEFAULT_OPTIONS: AudioProcessingOptions = {
   spatialRadius: 2.5,
   verticalOrbit: true, // 16D 3D vertical elevation wave
   centerAnchor: 0.18, // Anchors lead vocals & kick in center
+  stereoWidth: 0.28, // ~16° stereo angular spread (0 = mono-width, 0.6 = hyper-wide)
+  orbitPattern: "circle", // "circle" | "figure8" | "spiral" | "pendulum"
+  reverbRoom: "club", // "studio" | "club" | "hall" | "cathedral"
   exportQuality: "192", // MP3 - Compact (192 kbps)
   concurrency: 2, // 2 tracks processed in parallel
 };
@@ -88,27 +91,67 @@ export const PRESETS: Preset[] = [
 
 /**
  * Generate a synthetic stereo impulse response for spatial room simulation.
+ * Supports configurable acoustic spaces: Studio Booth, Club/Room, Concert Hall, Cathedral.
  * Uses high-frequency damping to avoid metallic harshness and comb filtering.
  */
-function createSpatialImpulseResponse(
+export function createSpatialImpulseResponse(
   context: BaseAudioContext,
-  durationSeconds = 1.4,
-  decayFactor = 3.2
+  roomType: "studio" | "club" | "hall" | "cathedral" = "club"
 ): AudioBuffer {
+  const configs = {
+    studio: {
+      duration: 0.7,
+      decay: 4.8,
+      gain: 0.16,
+      reflections: [
+        { delay: Math.floor(context.sampleRate * 0.008), gain: 0.18 },
+        { delay: Math.floor(context.sampleRate * 0.018), gain: -0.12 },
+      ],
+    },
+    club: {
+      duration: 1.4,
+      decay: 3.2,
+      gain: 0.22,
+      reflections: [
+        { delay: Math.floor(context.sampleRate * 0.014), gain: 0.25 },
+        { delay: Math.floor(context.sampleRate * 0.028), gain: -0.18 },
+        { delay: Math.floor(context.sampleRate * 0.045), gain: 0.12 },
+        { delay: Math.floor(context.sampleRate * 0.068), gain: -0.08 },
+      ],
+    },
+    hall: {
+      duration: 2.5,
+      decay: 2.1,
+      gain: 0.26,
+      reflections: [
+        { delay: Math.floor(context.sampleRate * 0.022), gain: 0.28 },
+        { delay: Math.floor(context.sampleRate * 0.048), gain: -0.22 },
+        { delay: Math.floor(context.sampleRate * 0.082), gain: 0.18 },
+        { delay: Math.floor(context.sampleRate * 0.125), gain: -0.14 },
+      ],
+    },
+    cathedral: {
+      duration: 4.2,
+      decay: 1.3,
+      gain: 0.30,
+      reflections: [
+        { delay: Math.floor(context.sampleRate * 0.035), gain: 0.32 },
+        { delay: Math.floor(context.sampleRate * 0.075), gain: -0.25 },
+        { delay: Math.floor(context.sampleRate * 0.140), gain: 0.22 },
+        { delay: Math.floor(context.sampleRate * 0.220), gain: -0.18 },
+        { delay: Math.floor(context.sampleRate * 0.310), gain: 0.14 },
+      ],
+    },
+  };
+
+  const cfg = configs[roomType] || configs.club;
   const sampleRate = context.sampleRate;
-  const length = Math.floor(sampleRate * durationSeconds);
+  const length = Math.floor(sampleRate * cfg.duration);
   const impulse = context.createBuffer(2, length, sampleRate);
 
   const leftChannel = impulse.getChannelData(0);
   const rightChannel = impulse.getChannelData(1);
-
-  // Subtle early reflection points (simulates acoustic reflections from nearby surfaces)
-  const reflections = [
-    { delay: Math.floor(sampleRate * 0.014), gain: 0.25 },
-    { delay: Math.floor(sampleRate * 0.028), gain: -0.18 },
-    { delay: Math.floor(sampleRate * 0.045), gain: 0.12 },
-    { delay: Math.floor(sampleRate * 0.068), gain: -0.08 },
-  ];
+  const decayFactor = cfg.decay;
 
   // 1-pole lowpass filter state to damp high frequencies progressively (air absorption)
   let filterL = 0;
@@ -119,10 +162,10 @@ function createSpatialImpulseResponse(
     const env = Math.exp(-decayFactor * t);
 
     // Natural frequency damping: damping coefficient increases as the tail decays
-    const damping = Math.max(0.35, 0.75 - t * 0.4);
+    const damping = Math.max(0.32, 0.75 - t * 0.4);
 
-    const rawNoiseL = (Math.random() * 2 - 1) * env * 0.22;
-    const rawNoiseR = (Math.random() * 2 - 1) * env * 0.22;
+    const rawNoiseL = (Math.random() * 2 - 1) * env * cfg.gain;
+    const rawNoiseR = (Math.random() * 2 - 1) * env * cfg.gain;
 
     filterL = filterL * damping + rawNoiseL * (1 - damping);
     filterR = filterR * damping + rawNoiseR * (1 - damping);
@@ -132,10 +175,10 @@ function createSpatialImpulseResponse(
   }
 
   // Inject early reflections with soft gains to prevent comb filtering
-  for (const { delay, gain } of reflections) {
+  for (const { delay, gain } of cfg.reflections) {
     if (delay < length) {
       leftChannel[delay] += gain;
-      rightChannel[delay + 12] += gain * 0.85;
+      rightChannel[delay + 14] += gain * 0.85;
     }
   }
 
@@ -222,7 +265,7 @@ export async function process8DAudio(
 
   // 7. Studio Reverb with "Abbey Road" Bandpass (Cuts low mud < 220Hz, cuts harsh sizzle > 6.5kHz)
   const convolver = offlineContext.createConvolver();
-  convolver.buffer = createSpatialImpulseResponse(offlineContext);
+  convolver.buffer = createSpatialImpulseResponse(offlineContext, options.reverbRoom ?? "club");
 
   const reverbHpFilter = offlineContext.createBiquadFilter();
   reverbHpFilter.type = "highpass";
@@ -269,34 +312,66 @@ export async function process8DAudio(
   const speed = Math.max(3, options.rotationSpeed);
   const radius = Math.max(1, options.spatialRadius);
   const dirMultiplier = options.direction === "counter-clockwise" ? -1 : 1;
-  const stereoAngularSpread = 0.28; // ~16 degree angular spread keeps the soundstage wide
+  const stereoAngularSpread = Math.max(0, Math.min(0.6, options.stereoWidth ?? 0.28)); // User-tunable (~16° default)
   const isVertical = options.verticalOrbit ?? true;
   const verticalSpeed = speed * 1.35; // Non-harmonic ratio creates an evolving 3D Lissajous spatial orbit
-
   const stepInterval = 0.08; // 12.5 trajectory updates per sec: smooth spatial orbit with 40% less automation overhead on mobile
   const hasAudioParamPosition =
     leftPanner.positionX && typeof leftPanner.positionX.setValueAtTime === "function";
+
+  const pattern = options.orbitPattern ?? "circle";
 
   if (hasAudioParamPosition) {
     for (let t = 0; t < duration; t += stepInterval) {
       const baseAngle = dirMultiplier * ((2 * Math.PI * t) / speed);
 
-      // Organic elliptical orbit: dips slightly closer to ears on sides (proximity warmth), further in rear
-      const sinBase = Math.sin(baseAngle);
-      const dynamicRadius = radius * (0.92 + 0.16 * (sinBase * sinBase));
-
-      // 16D Vertical elevation: sweeps above head (+1.0m) and below ear level (-0.4m)
+      // 16D Vertical elevation: sweeps above head (+0.95m) and below ear level (-0.35m)
       const elevationY = isVertical ? 0.95 * Math.sin((2 * Math.PI * t) / verticalSpeed) : 0;
 
-      // Left and Right channels maintain independent orbital coordinates
-      const angleL = baseAngle - stereoAngularSpread;
-      const angleR = baseAngle + stereoAngularSpread;
+      let xL: number;
+      let zL: number;
+      let xR: number;
+      let zR: number;
 
-      const xL = dynamicRadius * Math.sin(angleL);
-      const zL = -dynamicRadius * Math.cos(angleL);
-
-      const xR = dynamicRadius * Math.sin(angleR);
-      const zR = -dynamicRadius * Math.cos(angleR);
+      if (pattern === "figure8") {
+        // Lissajous Lemniscate orbit (Infinity ∞ shape): sweeps left, crosses center, sweeps right
+        const xCenter = radius * Math.sin(baseAngle);
+        const zCenter = -radius * Math.sin(2 * baseAngle) * 0.72;
+        const spreadOffset = stereoAngularSpread * radius * 0.9;
+        xL = xCenter - spreadOffset;
+        zL = zCenter;
+        xR = xCenter + spreadOffset;
+        zR = zCenter;
+      } else if (pattern === "spiral") {
+        // Spiral in-and-out orbit: breathes close (near-ear intimacy 0.45r) and expands wide (1.30r)
+        const breathe = 0.5 + 0.5 * Math.sin((2 * Math.PI * t) / (speed * 2.4));
+        const dynamicRadius = radius * (0.45 + 0.85 * breathe);
+        const angleL = baseAngle - stereoAngularSpread;
+        const angleR = baseAngle + stereoAngularSpread;
+        xL = dynamicRadius * Math.sin(angleL);
+        zL = -dynamicRadius * Math.cos(angleL);
+        xR = dynamicRadius * Math.sin(angleR);
+        zR = -dynamicRadius * Math.cos(angleR);
+      } else if (pattern === "pendulum") {
+        // Pendulum sweep: swings smoothly between left ear (-85°) and right ear (+85°)
+        const sweepAngle = (Math.PI * 0.46) * Math.sin(baseAngle);
+        const angleL = sweepAngle - stereoAngularSpread;
+        const angleR = sweepAngle + stereoAngularSpread;
+        xL = radius * Math.sin(angleL);
+        zL = -radius * Math.cos(angleL);
+        xR = radius * Math.sin(angleR);
+        zR = -radius * Math.cos(angleR);
+      } else {
+        // Organic elliptical circular orbit: dips slightly closer to ears on sides, further in rear
+        const sinBase = Math.sin(baseAngle);
+        const dynamicRadius = radius * (0.92 + 0.16 * (sinBase * sinBase));
+        const angleL = baseAngle - stereoAngularSpread;
+        const angleR = baseAngle + stereoAngularSpread;
+        xL = dynamicRadius * Math.sin(angleL);
+        zL = -dynamicRadius * Math.cos(angleL);
+        xR = dynamicRadius * Math.sin(angleR);
+        zR = -dynamicRadius * Math.cos(angleR);
+      }
 
       if (t === 0) {
         leftPanner.positionX.setValueAtTime(xL, 0);

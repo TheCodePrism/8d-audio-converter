@@ -1,0 +1,19 @@
+{
+  "name": "Sphere8D — 360° Spatial Sound & 8D Audio Studio",
+  "short_name": "Sphere8D",
+  "description": "Transform any music or audio track into an immersive 8D spatial audio experience with 360-degree binaural HRTF rotation, deep bass enhancement, and concert reverb.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07090E",
+  "theme_color": "#07090E",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["music", "multimedia", "productivity"]
+}

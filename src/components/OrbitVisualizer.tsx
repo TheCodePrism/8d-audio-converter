@@ -266,8 +266,27 @@ export default function OrbitVisualizer({
         ? Math.sin((currentAngle * speed) / (speed * 1.35))
         : 0;
       const perspectiveScale = 1.0 + elevationSin * 0.25;
-      const orbX = centerX + radius * Math.sin(currentAngle);
-      const orbY = centerY - radius * Math.cos(currentAngle);
+
+      const pattern = options.orbitPattern || "circle";
+      let orbX = centerX;
+      let orbY = centerY;
+
+      if (pattern === "figure8") {
+        orbX = centerX + radius * Math.sin(currentAngle);
+        orbY = centerY - radius * Math.sin(2 * currentAngle) * 0.72;
+      } else if (pattern === "spiral") {
+        const breathe = 0.5 + 0.5 * Math.sin((currentAngle * speed) / (speed * 2.4));
+        const dynR = radius * (0.45 + 0.85 * breathe);
+        orbX = centerX + dynR * Math.sin(currentAngle);
+        orbY = centerY - dynR * Math.cos(currentAngle);
+      } else if (pattern === "pendulum") {
+        const sweepAngle = (Math.PI * 0.46) * Math.sin(currentAngle);
+        orbX = centerX + radius * Math.sin(sweepAngle);
+        orbY = centerY - radius * Math.cos(sweepAngle);
+      } else {
+        orbX = centerX + radius * Math.sin(currentAngle);
+        orbY = centerY - radius * Math.cos(currentAngle);
+      }
 
       // ── Part 2: 360° Flowing Audio Wave Vortex (Spiral wave graph trailing 360° around the deck) ──
       const wavePointCount = 60; // 60 points for high-definition smooth wave across 360°
@@ -649,8 +668,16 @@ export default function OrbitVisualizer({
       <div className="absolute top-3 inset-x-3 z-20 flex items-center justify-between pointer-events-none select-none">
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/75 border border-slate-700/80 backdrop-blur-md text-cyan-300 shadow-md">
           <Activity className={`w-3 h-3 text-cyan-400 ${isPlaying ? "animate-pulse" : ""}`} />
-          <span className="text-[10px] font-mono font-semibold tracking-wider">
-            {options.verticalOrbit !== false ? "16D SPHERICAL" : "360° HRTF"}
+          <span className="text-[10px] font-mono font-semibold tracking-wider uppercase">
+            {options.orbitPattern === "figure8"
+              ? "16D FIGURE-8 ∞"
+              : options.orbitPattern === "spiral"
+              ? "16D SPIRAL 🌀"
+              : options.orbitPattern === "pendulum"
+              ? "16D PENDULUM ↔"
+              : options.verticalOrbit !== false
+              ? "16D SPHERICAL"
+              : "360° HRTF"}
           </span>
         </div>
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/75 border border-slate-700/80 backdrop-blur-md font-mono text-[10px] shadow-md">
@@ -687,12 +714,12 @@ export default function OrbitVisualizer({
             </>
           )}
           <span className="text-slate-600">•</span>
-          <span className="text-emerald-300 hidden sm:inline">
-            Reverb {Math.round((options.reverbLevel ?? 0.16) * 100)}%
+          <span className="text-emerald-300 hidden sm:inline capitalize">
+            {options.reverbRoom || "Club"} {Math.round((options.reverbLevel ?? 0.16) * 100)}%
           </span>
           <span
             className="w-1.5 h-1.5 rounded-full bg-emerald-400 sm:hidden shrink-0"
-            title={`Reverb ${Math.round((options.reverbLevel ?? 0.16) * 100)}%`}
+            title={`${options.reverbRoom || "Club"} Reverb ${Math.round((options.reverbLevel ?? 0.16) * 100)}%`}
           />
         </div>
       </div>

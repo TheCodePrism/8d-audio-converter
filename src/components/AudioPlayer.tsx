@@ -298,6 +298,76 @@ export default function AudioPlayer({
     }
   }, [volume, isMuted]);
 
+  // P0-3: iOS Safari AudioContext auto-resume on visibility/focus restore
+  // iOS suspends AudioContext when screen locks or tab is backgrounded.
+  // This effect resumes it when the user returns, preventing silent playback.
+  useEffect(() => {
+    const resumeAudioContext = () => {
+      if (audioContextRef.current && audioContextRef.current.state === "suspended") {
+        audioContextRef.current.resume().catch(() => {});
+      }
+    };
+
+    document.addEventListener("visibilitychange", resumeAudioContext);
+    window.addEventListener("focus", resumeAudioContext);
+    return () => {
+      document.removeEventListener("visibilitychange", resumeAudioContext);
+      window.removeEventListener("focus", resumeAudioContext);
+    };
+  }, []);
+
+  // P2-1: Global Keyboard Shortcuts (Space: Play/Pause, Tab/B: A/B toggle, ←/→: Seek, M: Mute, N: Next, P: Prev)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in text inputs or interactive editable fields
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      if (e.code === "Space") {
+        e.preventDefault();
+        togglePlay();
+      } else if (e.code === "Tab" || e.code === "KeyB") {
+        if (is8DReady) {
+          e.preventDefault();
+          setPlaybackMode((prev) => (prev === "8d" ? "original" : "8d"));
+        }
+      } else if (e.code === "ArrowLeft") {
+        e.preventDefault();
+        skipTime(-5);
+      } else if (e.code === "ArrowRight") {
+        e.preventDefault();
+        skipTime(5);
+      } else if (e.code === "KeyM") {
+        e.preventDefault();
+        toggleMute();
+      } else if (e.code === "KeyN") {
+        if (onNext) {
+          e.preventDefault();
+          shouldAutoPlayRef.current = true;
+          onNext(true);
+        }
+      } else if (e.code === "KeyP") {
+        if (onPrev) {
+          e.preventDefault();
+          shouldAutoPlayRef.current = true;
+          onPrev(true);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [is8DReady, onNext, onPrev, volume, isMuted]);
+
   // MediaSession API integration
   useEffect(() => {
     if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
@@ -520,8 +590,8 @@ export default function AudioPlayer({
               }`}
               title={
                 originalSrc && originalSrc !== src
-                  ? "Toggle between 8D Spatial Audio and Original Stereo Audio"
-                  : "Toggle between 8D Spatial Audio and Stereo Bypass"
+                  ? "Toggle between 8D Spatial Audio and Original Stereo Audio (Press Tab or B)"
+                  : "Toggle between 8D Spatial Audio and Stereo Bypass (Press Tab or B)"
               }
             >
               <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
@@ -624,7 +694,7 @@ export default function AudioPlayer({
             }}
             disabled={!onPrev}
             className="p-2.5 sm:p-2 text-slate-400 hover:text-slate-200 disabled:opacity-40 transition-colors touch-manipulation"
-            title="Previous track"
+            title="Previous track (P)"
           >
             <SkipBack className="w-5 h-5 fill-current" />
           </button>
@@ -639,7 +709,7 @@ export default function AudioPlayer({
                 ? "bg-gradient-to-tr from-cyan-400 via-cyan-500 to-purple-600 text-slate-950 font-black shadow-xl shadow-cyan-500/30 ring-4 ring-cyan-400/20 scale-105"
                 : "bg-gradient-to-tr from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white font-black shadow-lg shadow-cyan-500/20 hover:scale-105"
             }`}
-            title={isPlaying ? "Pause" : "Play 8D Audio"}
+            title={isPlaying ? "Pause (Space)" : "Play 8D Audio (Space)"}
           >
             {isPlaying ? (
               <Pause className="w-6 h-6 sm:w-7 sm:h-7 fill-current" />
@@ -656,7 +726,7 @@ export default function AudioPlayer({
             }}
             disabled={!onNext}
             className="p-2.5 sm:p-2 text-slate-400 hover:text-slate-200 disabled:opacity-40 transition-colors touch-manipulation"
-            title="Next track"
+            title="Next track (N)"
           >
             <SkipForward className="w-5 h-5 fill-current" />
           </button>
@@ -678,7 +748,7 @@ export default function AudioPlayer({
             type="button"
             onClick={toggleMute}
             className="p-2 sm:p-1.5 text-slate-400 hover:text-slate-200 transition-colors touch-manipulation"
-            title={isMuted ? "Unmute" : "Mute"}
+            title={isMuted ? "Unmute (M)" : "Mute (M)"}
           >
             {isMuted || volume === 0 ? (
               <VolumeX className="w-4 h-4 text-red-400" />
